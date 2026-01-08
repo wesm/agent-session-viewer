@@ -446,6 +446,63 @@
             color: var(--text-muted);
             font-size: 0.85rem;
         }
+
+        /* Virtual scroll container */
+        .content-wrapper {
+            position: relative;
+            display: flex;
+        }
+
+        .messages-container {
+            flex: 1;
+            position: relative;
+        }
+
+        .messages {
+            position: relative;
+        }
+
+        .message-spacer {
+            flex-shrink: 0;
+        }
+
+        /* Minimap */
+        .minimap {
+            position: sticky;
+            top: 0;
+            right: 0;
+            width: 80px;
+            height: calc(100vh - 60px);
+            background: var(--surface);
+            border-left: 1px solid var(--border);
+            flex-shrink: 0;
+            cursor: pointer;
+        }
+
+        .minimap canvas {
+            width: 100%;
+            height: 100%;
+        }
+
+        .minimap-viewport {
+            position: absolute;
+            left: 0;
+            right: 0;
+            background: rgba(88, 166, 255, 0.2);
+            border: 1px solid var(--accent);
+            pointer-events: none;
+        }
+
+        .minimap-label {
+            position: absolute;
+            bottom: 8px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 0.65rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
     </style>
 </head>
 <body>
@@ -547,6 +604,16 @@
         let selectedMessageIndex = -1;
         let watchInterval = null;
 
+        // Virtual scroll state
+        let allMessages = [];           // All messages (sorted)
+        let messageHeights = new Map(); // msg_id -> actual height
+        let messageOffsets = [];        // Cumulative offsets for each message
+        let totalHeight = 0;
+        let visibleRange = { start: 0, end: 20 };
+        const ESTIMATED_HEIGHT = 150;   // Default estimate per message
+        const BUFFER_PX = 400;          // Render buffer above/below viewport
+        const GAP = 16;                 // Gap between messages
+
         // DOM elements
         const sessionList = document.getElementById('session-list');
         const sessionCount = document.getElementById('session-count');
@@ -641,58 +708,252 @@
             });
         }
 
-        function renderSession(data) {
-            const { session, messages } = data;
-            const sortedMessages = [...messages];
-            if (sortNewestFirst) {
-                sortedMessages.reverse();
+        // Calculate message offsets based on known or estimated heights
+        function calculateOffsets() {
+            messageOffsets = [];
+            let offset = 0;
+            for (let i = 0; i < allMessages.length; i++) {
+                messageOffsets.push(offset);
+                const height = messageHeights.get(allMessages[i].msg_id) || ESTIMATED_HEIGHT;
+                offset += height + GAP;
             }
-            selectedMessageIndex = -1;
+            totalHeight = offset - GAP; // Remove last gap
+            return totalHeight;
+        }
 
-            content.innerHTML = `
-                <div class="session-detail">
-                    <div class="messages">
-                        ${sortedMessages.map((m, i) => `
-                            <div class="message ${m.role}" id="${m.msg_id}" data-index="${i}">
-                                <div class="message-header">
-                                    <span class="message-role">${m.role}</span>
-                                    <span class="message-time">${formatTime(m.timestamp)}</span>
-                                </div>
-                                <div class="message-content">${formatContent(m.content)}</div>
-                            </div>
-                        `).join('')}
+        // Find which messages are visible given scroll position
+        function getVisibleRange(scrollTop, containerHeight) {
+            if (allMessages.length === 0) return { start: 0, end: 0 };
+
+            const viewStart = Math.max(0, scrollTop - BUFFER_PX);
+            const viewEnd = scrollTop + containerHeight + BUFFER_PX;
+
+            let start = 0;
+            let end = allMessages.length;
+
+            // Binary search for start
+            let lo = 0, hi = allMessages.length - 1;
+            while (lo <= hi) {
+                const mid = Math.floor((lo + hi) / 2);
+                const msgBottom = messageOffsets[mid] + (messageHeights.get(allMessages[mid].msg_id) || ESTIMATED_HEIGHT);
+                if (msgBottom < viewStart) {
+                    lo = mid + 1;
+                } else {
+                    hi = mid - 1;
+                }
+            }
+            start = Math.max(0, lo - 1);
+
+            // Binary search for end
+            lo = start;
+            hi = allMessages.length - 1;
+            while (lo <= hi) {
+                const mid = Math.floor((lo + hi) / 2);
+                if (messageOffsets[mid] > viewEnd) {
+                    hi = mid - 1;
+                } else {
+                    lo = mid + 1;
+                }
+            }
+            end = Math.min(allMessages.length, hi + 2);
+
+            return { start, end };
+        }
+
+        // Render only visible messages
+        function renderVisibleMessages() {
+            const messagesContainer = document.querySelector('.messages');
+            if (!messagesContainer) return;
+
+            const { start, end } = visibleRange;
+            const topSpacer = start > 0 ? messageOffsets[start] : 0;
+            const bottomSpacer = end < allMessages.length
+                ? totalHeight - messageOffsets[end - 1] - (messageHeights.get(allMessages[end - 1]?.msg_id) || ESTIMATED_HEIGHT)
+                : 0;
+
+            let html = `<div class="message-spacer" style="height: ${topSpacer}px;"></div>`;
+
+            for (let i = start; i < end && i < allMessages.length; i++) {
+                const m = allMessages[i];
+                html += `
+                    <div class="message ${m.role} ${i === selectedMessageIndex ? 'selected' : ''}"
+                         id="${m.msg_id}" data-index="${i}">
+                        <div class="message-header">
+                            <span class="message-role">${m.role}</span>
+                            <span class="message-time">${formatTime(m.timestamp)}</span>
+                        </div>
+                        <div class="message-content">${formatContent(m.content)}</div>
                     </div>
-                </div>
-            `;
+                `;
+            }
 
-            content.querySelectorAll('.message').forEach(msg => {
+            html += `<div class="message-spacer" style="height: ${Math.max(0, bottomSpacer)}px;"></div>`;
+
+            messagesContainer.innerHTML = html;
+
+            // Measure rendered messages and update heights
+            messagesContainer.querySelectorAll('.message').forEach(msg => {
+                const id = msg.id;
+                const height = msg.offsetHeight;
+                if (height > 0 && messageHeights.get(id) !== height) {
+                    messageHeights.set(id, height);
+                }
                 msg.addEventListener('click', () => {
                     selectMessage(parseInt(msg.dataset.index));
                 });
             });
         }
 
-        function selectMessage(index, direction = 0) {
-            const messages = content.querySelectorAll('.message');
-            if (messages.length === 0) return;
+        // Throttled scroll handler
+        let scrollRaf = null;
+        function handleScroll() {
+            if (scrollRaf) return;
+            scrollRaf = requestAnimationFrame(() => {
+                scrollRaf = null;
+                const scrollTop = content.scrollTop;
+                const containerHeight = content.clientHeight;
+                const newRange = getVisibleRange(scrollTop, containerHeight);
 
-            index = Math.max(0, Math.min(index, messages.length - 1));
-            messages.forEach(m => m.classList.remove('selected'));
+                if (newRange.start !== visibleRange.start || newRange.end !== visibleRange.end) {
+                    visibleRange = newRange;
+                    renderVisibleMessages();
+                }
 
-            selectedMessageIndex = index;
-            const selected = messages[index];
-            if (selected) {
-                selected.classList.add('selected');
-                selected.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                updateMinimapViewport(scrollTop, containerHeight);
+            });
+        }
+
+        // Render minimap
+        function renderMinimap() {
+            const minimap = document.querySelector('.minimap');
+            if (!minimap || allMessages.length === 0) return;
+
+            const canvas = minimap.querySelector('canvas');
+            const ctx = canvas.getContext('2d');
+            const dpr = window.devicePixelRatio || 1;
+
+            // Set canvas size
+            canvas.width = 80 * dpr;
+            canvas.height = minimap.clientHeight * dpr;
+            ctx.scale(dpr, dpr);
+
+            const canvasHeight = minimap.clientHeight;
+            const scale = canvasHeight / Math.max(totalHeight, 1);
+
+            ctx.clearRect(0, 0, 80, canvasHeight);
+
+            // Draw messages
+            for (let i = 0; i < allMessages.length; i++) {
+                const m = allMessages[i];
+                const y = messageOffsets[i] * scale;
+                const h = Math.max(2, (messageHeights.get(m.msg_id) || ESTIMATED_HEIGHT) * scale);
+
+                ctx.fillStyle = m.role === 'user' ? '#58a6ff' : '#9d7cd8';
+                ctx.fillRect(8, y, 64, h - 1);
             }
         }
 
+        // Update minimap viewport indicator
+        function updateMinimapViewport(scrollTop, containerHeight) {
+            const viewport = document.querySelector('.minimap-viewport');
+            if (!viewport || totalHeight === 0) return;
+
+            const minimap = document.querySelector('.minimap');
+            const canvasHeight = minimap.clientHeight;
+            const scale = canvasHeight / Math.max(totalHeight, 1);
+
+            const top = scrollTop * scale;
+            const height = containerHeight * scale;
+
+            viewport.style.top = `${top}px`;
+            viewport.style.height = `${height}px`;
+        }
+
+        // Handle minimap click
+        function handleMinimapClick(e) {
+            const minimap = document.querySelector('.minimap');
+            if (!minimap) return;
+
+            const rect = minimap.getBoundingClientRect();
+            const y = e.clientY - rect.top;
+            const scale = minimap.clientHeight / Math.max(totalHeight, 1);
+            const scrollTop = y / scale - content.clientHeight / 2;
+
+            content.scrollTo({ top: Math.max(0, scrollTop) });
+        }
+
+        function renderSession(data) {
+            const { session, messages } = data;
+            allMessages = [...messages];
+            if (sortNewestFirst) {
+                allMessages.reverse();
+            }
+            selectedMessageIndex = -1;
+
+            // Calculate initial offsets
+            calculateOffsets();
+
+            // Initial visible range
+            visibleRange = getVisibleRange(0, content.clientHeight || 800);
+
+            content.innerHTML = `
+                <div class="content-wrapper">
+                    <div class="messages-container">
+                        <div class="messages" style="min-height: ${totalHeight}px;"></div>
+                    </div>
+                    <div class="minimap">
+                        <canvas></canvas>
+                        <div class="minimap-viewport"></div>
+                    </div>
+                </div>
+            `;
+
+            // Render visible messages
+            renderVisibleMessages();
+
+            // Setup scroll handler
+            content.removeEventListener('scroll', handleScroll);
+            content.addEventListener('scroll', handleScroll, { passive: true });
+
+            // Setup minimap
+            const minimap = document.querySelector('.minimap');
+            if (minimap) {
+                minimap.addEventListener('click', handleMinimapClick);
+            }
+
+            // Render minimap after a brief delay to ensure heights are measured
+            setTimeout(() => {
+                calculateOffsets();
+                renderMinimap();
+                updateMinimapViewport(content.scrollTop, content.clientHeight);
+            }, 50);
+        }
+
+        function selectMessage(index, direction = 0) {
+            if (allMessages.length === 0) return;
+
+            index = Math.max(0, Math.min(index, allMessages.length - 1));
+            selectedMessageIndex = index;
+
+            // Scroll to the message position
+            const msgOffset = messageOffsets[index] || 0;
+            content.scrollTo({ top: Math.max(0, msgOffset - 100) });
+
+            // Re-render to show selection (scroll handler will update visible range)
+            setTimeout(() => {
+                const msgEl = document.getElementById(allMessages[index].msg_id);
+                if (msgEl) {
+                    content.querySelectorAll('.message').forEach(m => m.classList.remove('selected'));
+                    msgEl.classList.add('selected');
+                }
+            }, 50);
+        }
+
         function navigateMessages(direction) {
-            const messages = content.querySelectorAll('.message');
-            if (messages.length === 0) return;
+            if (allMessages.length === 0) return;
 
             if (selectedMessageIndex === -1) {
-                selectMessage(direction > 0 ? 0 : messages.length - 1, direction);
+                selectMessage(direction > 0 ? 0 : allMessages.length - 1, direction);
             } else {
                 selectMessage(selectedMessageIndex + direction, direction);
             }
