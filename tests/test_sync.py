@@ -93,3 +93,98 @@ class TestFindSourceFile:
         with patch.object(sync, "CLAUDE_PROJECTS_DIR", nonexistent):
             result = sync.find_source_file("abc123")
             assert result is None
+
+
+class TestFindCodexSourceFile:
+    """Tests for Codex source file lookup with UUID extraction."""
+
+    def _create_codex_structure(self, tmp_path, filename):
+        """Helper to create Codex directory structure with a session file."""
+        day_dir = tmp_path / "2026" / "01" / "08"
+        day_dir.mkdir(parents=True)
+        session_file = day_dir / filename
+        session_file.write_text("{}")
+        return session_file
+
+    def test_valid_uuid_match(self, tmp_path):
+        """Valid UUID should find the correct file."""
+        session_file = self._create_codex_structure(
+            tmp_path,
+            "rollout-2026-01-08T06-48-54-019b9da7-1f41-7af2-80d9-6e293902fea8.jsonl"
+        )
+
+        with patch.object(sync, "CODEX_SESSIONS_DIR", tmp_path):
+            result = sync._find_codex_source_file("019b9da7-1f41-7af2-80d9-6e293902fea8")
+            assert result == session_file
+
+    def test_uuid_with_extra_timestamp_dashes(self, tmp_path):
+        """UUID extraction should work even with extra dashes in timestamp (e.g., millis)."""
+        # Simulate a timestamp with milliseconds: 2026-01-08T06-48-54-123
+        session_file = self._create_codex_structure(
+            tmp_path,
+            "rollout-2026-01-08T06-48-54-123-019b9da7-1f41-7af2-80d9-6e293902fea8.jsonl"
+        )
+
+        with patch.object(sync, "CODEX_SESSIONS_DIR", tmp_path):
+            result = sync._find_codex_source_file("019b9da7-1f41-7af2-80d9-6e293902fea8")
+            assert result == session_file
+
+    def test_uuid_with_timezone_in_timestamp(self, tmp_path):
+        """UUID extraction should work with timezone offset in timestamp."""
+        # Simulate timezone: 2026-01-08T06-48-54-0600
+        session_file = self._create_codex_structure(
+            tmp_path,
+            "rollout-2026-01-08T06-48-54-0600-019b9da7-1f41-7af2-80d9-6e293902fea8.jsonl"
+        )
+
+        with patch.object(sync, "CODEX_SESSIONS_DIR", tmp_path):
+            result = sync._find_codex_source_file("019b9da7-1f41-7af2-80d9-6e293902fea8")
+            assert result == session_file
+
+    def test_partial_uuid_no_match(self, tmp_path):
+        """Partial UUID should not match."""
+        self._create_codex_structure(
+            tmp_path,
+            "rollout-2026-01-08T06-48-54-019b9da7-1f41-7af2-80d9-6e293902fea8.jsonl"
+        )
+
+        with patch.object(sync, "CODEX_SESSIONS_DIR", tmp_path):
+            # Missing first segment
+            result = sync._find_codex_source_file("1f41-7af2-80d9-6e293902fea8")
+            assert result is None
+
+    def test_similar_uuid_no_collision(self, tmp_path):
+        """Similar but different UUIDs should not collide."""
+        # Create two files with similar UUIDs
+        self._create_codex_structure(
+            tmp_path,
+            "rollout-2026-01-08T06-48-54-019b9da7-1f41-7af2-80d9-6e293902fea8.jsonl"
+        )
+        day_dir = tmp_path / "2026" / "01" / "08"
+        other_file = day_dir / "rollout-2026-01-08T07-00-00-019b9da7-1f41-7af2-80d9-000000000000.jsonl"
+        other_file.write_text("{}")
+
+        with patch.object(sync, "CODEX_SESSIONS_DIR", tmp_path):
+            # Should find exact match only
+            result = sync._find_codex_source_file("019b9da7-1f41-7af2-80d9-6e293902fea8")
+            assert result is not None
+            assert "6e293902fea8" in result.name
+
+    def test_codex_prefix_routing(self, tmp_path):
+        """find_source_file should route codex: prefixed IDs correctly."""
+        session_file = self._create_codex_structure(
+            tmp_path,
+            "rollout-2026-01-08T06-48-54-019b9da7-1f41-7af2-80d9-6e293902fea8.jsonl"
+        )
+
+        with patch.object(sync, "CODEX_SESSIONS_DIR", tmp_path):
+            result = sync.find_source_file("codex:019b9da7-1f41-7af2-80d9-6e293902fea8")
+            assert result == session_file
+
+    def test_nonexistent_codex_dir(self, tmp_path):
+        """Non-existent Codex directory should return None."""
+        nonexistent = tmp_path / "nonexistent"
+
+        with patch.object(sync, "CODEX_SESSIONS_DIR", nonexistent):
+            result = sync._find_codex_source_file("019b9da7-1f41-7af2-80d9-6e293902fea8")
+            assert result is None
