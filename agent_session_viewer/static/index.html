@@ -603,6 +603,7 @@
         let sortNewestFirst = false;  // Default to chronological (oldest first)
         let selectedMessageIndex = -1;
         let statusPollInterval = null;
+        let eventSource = null;  // SSE connection for live updates
 
         // DOM elements
         const sessionList = document.getElementById('session-list');
@@ -686,6 +687,41 @@
                 const date = new Date(data.last_sync);
                 lastSyncEl.textContent = `Last sync: ${date.toLocaleTimeString()}`;
             }
+        }
+
+        // SSE connection for live session updates
+        function connectSSE(sessionId) {
+            // Close existing connection
+            if (eventSource) {
+                eventSource.close();
+                eventSource = null;
+            }
+
+            if (!sessionId) return;
+
+            // Connect to SSE with session ID
+            eventSource = new EventSource(`/api/events?session_id=${sessionId}`);
+
+            eventSource.addEventListener('session_updated', async (event) => {
+                const updatedSessionId = event.data;
+                // Only reload if it's the current session
+                if (currentSession && currentSession.id === updatedSessionId) {
+                    const data = await fetchSession(updatedSessionId);
+                    currentSessionData = data;
+                    renderSession(data);
+                }
+            });
+
+            eventSource.onerror = () => {
+                // Reconnect after a delay on error
+                eventSource.close();
+                eventSource = null;
+                setTimeout(() => {
+                    if (currentSession) {
+                        connectSSE(currentSession.id);
+                    }
+                }, 5000);
+            };
         }
 
         // Sort functions
@@ -869,6 +905,9 @@
             currentSessionData = data;
             renderSession(data);
             renderSessionList(); // Update active state
+
+            // Connect SSE for live updates on this session
+            connectSSE(id);
 
             if (scrollToMsg) {
                 setTimeout(() => {

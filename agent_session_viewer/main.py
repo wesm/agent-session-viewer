@@ -255,15 +255,48 @@ async def upload_session(
     }
 
 
-# SSE for real-time updates (placeholder)
+# SSE for real-time session updates
 @app.get("/api/events")
-async def event_stream():
-    """Server-sent events for real-time updates."""
+async def event_stream(session_id: Optional[str] = None):
+    """Server-sent events for real-time session updates.
+
+    If session_id is provided, watches the source file for changes
+    and pushes updates when the file is modified.
+    """
     async def generate():
+        last_mtime = None
+        source_path = None
+
+        # Find source file if session_id provided
+        if session_id:
+            source_path = sync_module.find_source_file(session_id)
+            if source_path:
+                last_mtime = source_path.stat().st_mtime
+
+        heartbeat_counter = 0
         while True:
-            # Send heartbeat every 30 seconds
-            yield f"event: heartbeat\ndata: {datetime.now().isoformat()}\n\n"
-            await asyncio.sleep(30)
+            # Check for file changes every 1.5 seconds
+            await asyncio.sleep(1.5)
+            heartbeat_counter += 1
+
+            if source_path and source_path.exists():
+                current_mtime = source_path.stat().st_mtime
+                if last_mtime and current_mtime > last_mtime:
+                    # File changed - sync and notify
+                    last_mtime = current_mtime
+                    project_name = sync_module.get_project_name(source_path.parent)
+                    result = sync_module.sync_session_file(
+                        source_path, project_name, force=True
+                    )
+                    if result and not result.get("skipped"):
+                        yield f"event: session_updated\ndata: {session_id}\n\n"
+                elif last_mtime is None:
+                    last_mtime = current_mtime
+
+            # Send heartbeat every 20 iterations (~30 seconds)
+            if heartbeat_counter >= 20:
+                heartbeat_counter = 0
+                yield f"event: heartbeat\ndata: {datetime.now().isoformat()}\n\n"
 
     return StreamingResponse(
         generate(),

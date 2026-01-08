@@ -67,6 +67,20 @@ def find_matching_projects() -> list[Path]:
     return sorted(projects)
 
 
+def find_source_file(session_id: str) -> Optional[Path]:
+    """Find the source .jsonl file for a session ID in Claude projects."""
+    if not CLAUDE_PROJECTS_DIR.exists():
+        return None
+
+    for project_dir in CLAUDE_PROJECTS_DIR.iterdir():
+        if not project_dir.is_dir():
+            continue
+        candidate = project_dir / f"{session_id}.jsonl"
+        if candidate.exists():
+            return candidate
+    return None
+
+
 def sync_session_file(
     source_path: Path,
     project_name: str,
