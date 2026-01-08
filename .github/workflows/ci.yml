@@ -51,3 +51,32 @@ jobs:
         run: |
           uv run python -m tarfile -l dist/*.tar.gz
           uv run python -m zipfile -l dist/*.whl
+
+  tauri-build:
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: tauri-app
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-action@stable
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Tauri CLI
+        run: npm install
+
+      - name: Build Tauri app
+        run: npx @tauri-apps/cli build --ci
+        env:
+          # Skip signing in CI
+          TAURI_SIGNING_PRIVATE_KEY: ""
+
+      - name: Run Rust tests
+        run: cargo test
+        working-directory: tauri-app/src-tauri
