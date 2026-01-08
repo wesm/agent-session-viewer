@@ -4,13 +4,21 @@ set -euo pipefail
 APP_NAME="Agent Session Viewer"
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 VERSION="${1:-0.1.0}"
+SIGN_IDENTITY="${APPLE_SIGNING_IDENTITY:-}"
 
 echo "Building $APP_NAME v$VERSION..."
 
 cd "$ROOT_DIR"
 
 # Build release with Tauri (app bundle only)
-npx @tauri-apps/cli build
+# APPLE_SIGNING_IDENTITY env var is used by Tauri for code signing
+if [ -n "$SIGN_IDENTITY" ]; then
+  echo "Signing with: $SIGN_IDENTITY"
+  APPLE_SIGNING_IDENTITY="$SIGN_IDENTITY" npx @tauri-apps/cli build
+else
+  echo "Warning: No APPLE_SIGNING_IDENTITY set, using ad-hoc signing"
+  npx @tauri-apps/cli build
+fi
 
 # Paths
 BUNDLE_DIR="$ROOT_DIR/src-tauri/target/release/bundle/macos"
@@ -23,9 +31,11 @@ if [ ! -d "$APP_PATH" ]; then
   exit 1
 fi
 
-# Verify signature
-echo "Verifying code signature..."
-codesign --verify --deep --strict --verbose=2 "$APP_PATH"
+# Verify signature (skip if ad-hoc)
+if [ -n "$SIGN_IDENTITY" ]; then
+  echo "Verifying code signature..."
+  codesign --verify --deep --strict --verbose=2 "$APP_PATH"
+fi
 
 # Create DMG manually
 echo "Creating DMG..."
@@ -43,3 +53,8 @@ echo ""
 echo "Build complete!"
 echo "  App: $APP_PATH"
 echo "  DMG: $DIST_DIR/$DMG_NAME"
+if [ -z "$SIGN_IDENTITY" ]; then
+  echo ""
+  echo "Note: App was built with ad-hoc signing."
+  echo "For distribution, set APPLE_SIGNING_IDENTITY and rebuild."
+fi

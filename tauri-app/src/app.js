@@ -187,16 +187,20 @@ function getVisibleRange(scrollTop, containerHeight) {
 // Debounced height recalculation
 let heightRecalcTimeout = null;
 let lastMinimapHeight = 0;
+let lastMeasuredCount = 0;
 function scheduleHeightRecalc() {
     if (heightRecalcTimeout) return;
     heightRecalcTimeout = setTimeout(() => {
         heightRecalcTimeout = null;
-        const prevHeight = totalHeight;
         calculateOffsets();
         updateContainerHeight();
-        // Only re-render minimap if total height changed significantly (>5%)
-        if (Math.abs(totalHeight - lastMinimapHeight) > lastMinimapHeight * 0.05) {
+        // Re-render minimap if height changed significantly OR more heights were measured
+        const measuredCount = messageHeights.size;
+        const heightChanged = Math.abs(totalHeight - lastMinimapHeight) > lastMinimapHeight * 0.05;
+        const moreHeightsMeasured = measuredCount > lastMeasuredCount;
+        if (heightChanged || moreHeightsMeasured) {
             lastMinimapHeight = totalHeight;
+            lastMeasuredCount = measuredCount;
             renderMinimap();
         }
         updateMinimapViewport(content.scrollTop, content.clientHeight);
@@ -352,6 +356,7 @@ function renderSession(data) {
     messageHeights.clear();
     messageOffsets = [];
     lastMinimapHeight = 0;
+    lastMeasuredCount = 0;
 
     // Calculate initial offsets (will use estimated heights)
     calculateOffsets();

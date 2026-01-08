@@ -32,7 +32,7 @@
     "icon": ["icons/icon.icns", "icons/icon.png"],
     "macOS": {
       "minimumSystemVersion": "10.15",
-      "signingIdentity": "Developer ID Application: William McKinney (2YMZH84KR8)",
+      "signingIdentity": null,
       "entitlements": "entitlements.plist"
     }
   }
