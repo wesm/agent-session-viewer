@@ -109,6 +109,25 @@
             color: var(--text-muted);
         }
 
+        .project-filter {
+            width: 200px;
+        }
+
+        .project-filter select {
+            width: 100%;
+            padding: 8px 12px;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text);
+            font-size: 0.9rem;
+        }
+
+        .project-filter select:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+
         .header-actions {
             display: flex;
             gap: 8px;
@@ -511,6 +530,11 @@
                 <span class="search-icon">🔍</span>
                 <input type="text" id="search-input" placeholder="Search messages...">
             </div>
+            <div class="project-filter">
+                <select id="project-filter" title="Filter by project">
+                    <option value="all">All projects</option>
+                </select>
+            </div>
             <div class="header-actions">
                 <button class="btn" id="scroll-top-btn" title="Scroll to top">↑ Top</button>
                 <button class="btn" id="sort-btn" title="Toggle message order">↓ Newest first</button>
@@ -594,6 +618,7 @@
     <script>
         // State
         let sessions = [];
+        let projects = [];
         let currentSession = null;
         let currentSessionData = null;
         let searchTimeout = null;
@@ -601,12 +626,16 @@
         let selectedMessageIndex = -1;
         let statusPollInterval = null;
         let eventSource = null;  // SSE connection for live updates
+        let selectedProject = 'all';
+
+        const PROJECT_FILTER_STORAGE_KEY = 'agent_session_viewer.project_filter';
 
         // DOM elements
         const sessionList = document.getElementById('session-list');
         const sessionCount = document.getElementById('session-count');
         const content = document.getElementById('content');
         const searchInput = document.getElementById('search-input');
+        const projectFilter = document.getElementById('project-filter');
         const syncBtn = document.getElementById('sync-btn');
         const sortBtn = document.getElementById('sort-btn');
         const scrollTopBtn = document.getElementById('scroll-top-btn');
@@ -618,8 +647,18 @@
         const lastSyncEl = document.getElementById('last-sync');
 
         // API calls
+        async function fetchProjects() {
+            const res = await fetch('/api/projects');
+            const data = await res.json();
+            return data.projects || [];
+        }
+
         async function fetchSessions() {
-            const res = await fetch('/api/sessions?limit=1000');
+            let url = '/api/sessions?limit=1000';
+            if (selectedProject && selectedProject !== 'all') {
+                url += `&project=${encodeURIComponent(selectedProject)}`;
+            }
+            const res = await fetch(url);
             const data = await res.json();
             return data.sessions;
         }
@@ -639,6 +678,7 @@
             syncBtn.textContent = '↻ Syncing...';
             try {
                 await fetch('/api/sync', { method: 'POST' });
+                await loadProjects();
                 await loadSessions();
                 updateStatus();
             } finally {
@@ -677,6 +717,7 @@
                     clearInterval(statusPollInterval);
                     statusPollInterval = null;
                     // Reload sessions after sync completes
+                    await loadProjects();
                     await loadSessions();
                 }
             }
@@ -891,6 +932,35 @@
         }
 
         // Load functions
+        function renderProjectFilter() {
+            projectFilter.textContent = '';
+
+            const allOption = document.createElement('option');
+            allOption.value = 'all';
+            allOption.textContent = 'All projects';
+            projectFilter.appendChild(allOption);
+
+            for (const project of projects) {
+                const option = document.createElement('option');
+                option.value = project;
+                option.textContent = project;
+                projectFilter.appendChild(option);
+            }
+
+            projectFilter.value = selectedProject;
+        }
+
+        async function loadProjects() {
+            projects = await fetchProjects();
+
+            if (selectedProject !== 'all' && !projects.includes(selectedProject)) {
+                selectedProject = 'all';
+                localStorage.setItem(PROJECT_FILTER_STORAGE_KEY, selectedProject);
+            }
+
+            renderProjectFilter();
+        }
+
         async function loadSessions() {
             sessions = await fetchSessions();
             renderSessionList();
@@ -930,6 +1000,11 @@
             }
 
             const data = await searchMessages(query);
+            if (selectedProject && selectedProject !== 'all') {
+                const filtered = (data.results || []).filter(r => r.project === selectedProject);
+                data.results = filtered;
+                data.count = filtered.length;
+            }
             renderSearchResults(data);
         }
 
@@ -993,6 +1068,43 @@
         searchInput.addEventListener('input', (e) => {
             clearTimeout(searchTimeout);
             searchTimeout = setTimeout(() => doSearch(e.target.value), 300);
+        });
+
+        projectFilter.addEventListener('change', async (e) => {
+            selectedProject = e.target.value || 'all';
+            localStorage.setItem(PROJECT_FILTER_STORAGE_KEY, selectedProject);
+
+            await loadSessions();
+
+            const query = searchInput.value || '';
+            if (query.trim()) {
+                await doSearch(query);
+                return;
+            }
+
+            const stillVisible = currentSession && sessions.some(s => s.id === currentSession.id);
+            if (stillVisible) {
+                renderSessionList();
+                return;
+            }
+
+            if (sessions.length > 0) {
+                await loadSession(sessions[0].id);
+                return;
+            }
+
+            currentSession = null;
+            currentSessionData = null;
+            if (eventSource) {
+                eventSource.close();
+                eventSource = null;
+            }
+            content.innerHTML = `
+                <div class="empty-state">
+                    <h2>No sessions</h2>
+                    <p>No sessions found for this project filter</p>
+                </div>
+            `;
         });
 
         syncBtn.addEventListener('click', triggerSync);
@@ -1077,6 +1189,8 @@
 
         // Initialize
         (async () => {
+            selectedProject = localStorage.getItem(PROJECT_FILTER_STORAGE_KEY) || 'all';
+            await loadProjects();
             await loadSessions();
             await updateStatus();
             // Auto-load most recent session
