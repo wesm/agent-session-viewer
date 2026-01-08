@@ -240,6 +240,24 @@
             color: var(--text);
         }
 
+        .scroll-to-top {
+            display: inline-block;
+            margin-bottom: 12px;
+            padding: 6px 12px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            color: var(--text-muted);
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: background 0.15s, color 0.15s;
+        }
+
+        .scroll-to-top:hover {
+            background: var(--border);
+            color: var(--text);
+        }
+
         .messages {
             display: flex;
             flex-direction: column;
@@ -766,6 +784,7 @@
 
             content.innerHTML = `
                 <div class="session-detail">
+                    <button class="scroll-to-top">Scroll to top</button>
                     <div class="messages">
                         ${sortedMessages.map((m, i) => `
                             <div class="message ${m.role}" id="${m.msg_id}" data-index="${i}">
@@ -779,6 +798,11 @@
                     </div>
                 </div>
             `;
+
+            // Add click handler for scroll to top
+            content.querySelector('.scroll-to-top').addEventListener('click', () => {
+                content.scrollTo({ top: 0, behavior: 'smooth' });
+            });
 
             // Add click handlers to messages
             content.querySelectorAll('.message').forEach(msg => {
