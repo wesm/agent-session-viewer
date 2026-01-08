@@ -65,6 +65,10 @@ Options:
 
 The viewer syncs sessions from each agent's local storage into its own database with full-text search indexing. When you're viewing an active session, it watches the source file and updates the UI within seconds of new messages.
 
+## Acknowledgements
+
+Inspired by [claude-history-tool](https://github.com/andyfischer/ai-coding-tools/tree/main/claude-history-tool) by Andy Fischer and [claude-code-transcripts](https://github.com/simonw/claude-code-transcripts) by Simon Willison.
+
 ## License
 
 MIT
