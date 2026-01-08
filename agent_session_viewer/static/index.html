@@ -616,7 +616,7 @@
 
         // API calls
         async function fetchSessions() {
-            const res = await fetch('/api/sessions?limit=200');
+            const res = await fetch('/api/sessions?limit=1000');
             const data = await res.json();
             return data.sessions;
         }

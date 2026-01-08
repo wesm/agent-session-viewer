@@ -149,7 +149,7 @@ async def trigger_sync():
 async def list_sessions(
     project: Optional[str] = None,
     machine: Optional[str] = None,
-    limit: int = Query(default=100, le=500),
+    limit: int = Query(default=100, le=2000),
     offset: int = Query(default=0, ge=0),
 ):
     """List sessions with optional filters."""

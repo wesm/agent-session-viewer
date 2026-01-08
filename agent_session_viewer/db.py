@@ -219,7 +219,7 @@ def get_sessions(
             query += " AND machine = ?"
             params.append(machine)
 
-        query += " ORDER BY ended_at DESC LIMIT ? OFFSET ?"
+        query += " ORDER BY COALESCE(ended_at, started_at, created_at) DESC LIMIT ? OFFSET ?"
         params.extend([limit, offset])
 
         rows = conn.execute(query, params).fetchall()
