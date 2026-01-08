@@ -156,7 +156,8 @@ def sync_project(project_dir: Path, machine: str = "local", on_progress=None) ->
         Dict with sync stats
     """
     project_name = get_project_name(project_dir)
-    session_files = list(project_dir.glob("*.jsonl"))
+    # Filter out agent- files from the count
+    session_files = [f for f in project_dir.glob("*.jsonl") if not f.stem.startswith("agent-")]
 
     if on_progress:
         on_progress("project_start", project=project_name, sessions=len(session_files))
