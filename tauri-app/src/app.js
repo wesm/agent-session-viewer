@@ -184,12 +184,11 @@ function scheduleHeightRecalc() {
     if (heightRecalcTimeout) return;
     heightRecalcTimeout = setTimeout(() => {
         heightRecalcTimeout = null;
-        const oldHeight = totalHeight;
         calculateOffsets();
-        if (totalHeight !== oldHeight) {
-            updateContainerHeight();
-            renderMinimap();
-        }
+        updateContainerHeight();
+        // Always re-render minimap since offsets may have changed even if totalHeight didn't
+        renderMinimap();
+        updateMinimapViewport(content.scrollTop, content.clientHeight);
     }, 100);
 }
 
