@@ -134,9 +134,17 @@ def _find_codex_source_file(session_id: str) -> Optional[Path]:
                 # Codex files are named rollout-{timestamp}-{uuid}.jsonl
                 # The session_id is the UUID part
                 for session_file in day_dir.glob("*.jsonl"):
-                    # Check if the session_id is in the filename
-                    if session_id in session_file.stem:
-                        return session_file
+                    # Extract UUID from filename: rollout-YYYY-MM-DDTHH-MM-SS-{uuid}
+                    # Format: rollout-2026-01-08T06-48-54-019b9da7-1f41-7af2-80d9-6e293902fea8
+                    # Split: [rollout, 2026, 01, 08T06, 48, 54, uuid-parts...]
+                    stem = session_file.stem
+                    if stem.startswith("rollout-"):
+                        parts = stem.split("-")
+                        # UUID starts at index 6 (after rollout-YYYY-MM-DDTHH-MM-SS-)
+                        if len(parts) >= 7:
+                            file_uuid = "-".join(parts[6:])
+                            if file_uuid == session_id:
+                                return session_file
     return None
 
 
