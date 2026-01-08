@@ -249,19 +249,25 @@ def extract_codex_project(cwd: str) -> str:
 
 def parse_codex_session(
     jsonl_path: Path,
-    machine: str = "local"
-) -> tuple[SessionMetadata, list[ParsedMessage]]:
+    machine: str = "local",
+    include_exec: bool = False,
+) -> tuple[Optional[SessionMetadata], list[ParsedMessage]]:
     """
     Parse a Codex JSONL session file and extract metadata + messages.
 
     Codex format:
-    - session_meta: {timestamp, payload: {id, cwd}}
+    - session_meta: {timestamp, payload: {id, cwd, originator}}
     - response_item: {timestamp, payload: {role: "user"|"assistant", content: [{type, text}]}}
 
     Note: Session IDs are prefixed with "codex:" to avoid collisions with Claude session IDs.
 
+    Args:
+        jsonl_path: Path to the JSONL file
+        machine: Machine identifier
+        include_exec: If False, skip non-interactive sessions (originator=codex_exec)
+
     Returns:
-        Tuple of (SessionMetadata, list of ParsedMessages)
+        Tuple of (SessionMetadata or None if skipped, list of ParsedMessages)
     """
     messages = []
     first_message = None
@@ -269,6 +275,7 @@ def parse_codex_session(
     ended_at = None
     session_id = None
     project = "unknown"
+    originator = None
 
     try:
         with open(jsonl_path, "r", encoding="utf-8") as f:
@@ -296,6 +303,11 @@ def parse_codex_session(
                     session_id = payload.get("id")
                     cwd = payload.get("cwd", "")
                     project = extract_codex_project(cwd)
+                    originator = payload.get("originator", "")
+
+                    # Skip non-interactive sessions unless explicitly included
+                    if not include_exec and originator == "codex_exec":
+                        return None, []
 
                 # Process messages
                 elif entry_type == "response_item":

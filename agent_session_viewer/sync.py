@@ -305,13 +305,19 @@ def sync_codex_session(
     Sync a single Codex session file.
 
     Returns:
-        Session metadata dict if synced, None if skipped
+        Session metadata dict if synced, None if skipped (including non-interactive sessions)
     """
     # Get source file info
     source_size = source_path.stat().st_size
 
     # Parse to get session_id and project from content
+    # Non-interactive (codex_exec) sessions are skipped by default
     metadata, messages = parse_codex_session(source_path, machine)
+
+    # Skip non-interactive sessions
+    if metadata is None:
+        return None
+
     session_id = metadata.session_id
 
     # Check if file has changed using size + hash
