@@ -334,12 +334,23 @@ def cli():
     url = f"http://{args.host}:{port}"
     print(f"Starting Agent Session Viewer at {url}")
 
-    # Open browser after short delay
+    # Open browser when server is ready
     if not args.no_browser:
         import threading
         def open_browser():
             import time
-            time.sleep(1.5)
+            import urllib.request
+            import urllib.error
+            # Poll until server is ready (max 60 seconds)
+            for _ in range(120):
+                time.sleep(0.5)
+                try:
+                    urllib.request.urlopen(f"{url}/api/status", timeout=1)
+                    webbrowser.open(url)
+                    return
+                except (urllib.error.URLError, ConnectionRefusedError):
+                    continue
+            print("Warning: Server did not become ready, opening browser anyway")
             webbrowser.open(url)
         threading.Thread(target=open_browser, daemon=True).start()
 
