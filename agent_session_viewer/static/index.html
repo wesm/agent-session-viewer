@@ -1,0 +1,989 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agent Sessions</title>
+    <style>
+        @font-face {
+            font-family: 'MesloLGS NF';
+            src: url('/static/fonts/MesloLGS-NF-Regular.ttf') format('truetype');
+            font-weight: normal;
+            font-style: normal;
+        }
+
+        :root {
+            --bg: #0d1117;
+            --surface: #161b22;
+            --surface-hover: #21262d;
+            --border: #30363d;
+            --text: #e6edf3;
+            --text-muted: #8b949e;
+            --accent: #58a6ff;
+            --accent-muted: #388bfd;
+            --user-bg: #1c2128;
+            --assistant-bg: #1a1f26;
+            --success: #3fb950;
+            --warning: #d29922;
+            --tool-bg: #1a2332;
+            --thinking-bg: #1f1a24;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: 'MesloLGS NF', 'SF Mono', Monaco, 'Cascadia Code', monospace;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.5;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 16px;
+        }
+
+        /* Header */
+        header {
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+            padding: 12px 0;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .header-content {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        h1 {
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: var(--text);
+        }
+
+        .search-box {
+            flex: 1;
+            max-width: 500px;
+            position: relative;
+        }
+
+        .search-box input {
+            width: 100%;
+            padding: 8px 12px 8px 36px;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text);
+            font-size: 0.9rem;
+        }
+
+        .search-box input:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+
+        .search-box::before {
+            content: "⌘K";
+            position: absolute;
+            right: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-muted);
+            font-size: 0.75rem;
+            background: var(--surface);
+            padding: 2px 6px;
+            border-radius: 4px;
+        }
+
+        .search-icon {
+            position: absolute;
+            left: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-muted);
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .btn {
+            padding: 6px 12px;
+            background: var(--surface-hover);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text);
+            cursor: pointer;
+            font-size: 0.85rem;
+        }
+
+        .btn:hover { background: var(--border); }
+        .btn-primary { background: var(--accent); border-color: var(--accent); }
+        .btn-primary:hover { background: var(--accent-muted); }
+
+        /* Main layout */
+        main {
+            display: flex;
+            min-height: calc(100vh - 60px);
+        }
+
+        /* Sidebar */
+        .sidebar {
+            width: 320px;
+            border-right: 1px solid var(--border);
+            overflow-y: auto;
+            height: calc(100vh - 60px);
+            position: sticky;
+            top: 60px;
+        }
+
+        .sidebar-header {
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .sidebar-header h2 {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .session-list {
+            list-style: none;
+        }
+
+        .session-item {
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--border);
+            cursor: pointer;
+        }
+
+        .session-item:hover { background: var(--surface); }
+        .session-item.active { background: var(--surface-hover); border-left: 3px solid var(--accent); }
+
+        .session-title {
+            font-size: 0.9rem;
+            color: var(--text);
+            margin-bottom: 4px;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+
+        .session-meta {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            display: flex;
+            gap: 8px;
+        }
+
+        .badge {
+            background: var(--surface-hover);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.7rem;
+        }
+
+        .badge.agent-claude {
+            background: #6b4c9a;
+            color: #e6edf3;
+        }
+
+        /* Content area */
+        .content {
+            flex: 1;
+            padding: 24px;
+            padding-bottom: 60px; /* Space for status bar */
+            overflow-y: auto;
+            height: calc(100vh - 60px);
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: var(--text-muted);
+        }
+
+        .empty-state h2 {
+            font-size: 1.25rem;
+            margin-bottom: 8px;
+            color: var(--text);
+        }
+
+        /* Session detail */
+        .session-detail h2 {
+            font-size: 1.1rem;
+            margin-bottom: 16px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .messages {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .message {
+            padding: 16px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            cursor: pointer;
+            transition: border-color 0.15s, box-shadow 0.15s;
+        }
+
+        .message:hover {
+            border-color: var(--text-muted);
+        }
+
+        .message.selected {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 1px var(--accent);
+        }
+
+        .message.user {
+            background: var(--user-bg);
+        }
+
+        .message.assistant {
+            background: var(--assistant-bg);
+        }
+
+        .message-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-size: 0.8rem;
+        }
+
+        .message-role {
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .message.user .message-role { color: var(--accent); }
+        .message.assistant .message-role { color: var(--text-muted); }
+
+        .message-time { color: var(--text-muted); }
+
+        .message-content {
+            white-space: pre-wrap;
+            word-break: break-word;
+            font-size: 0.9rem;
+        }
+
+        .message-content code {
+            background: var(--bg);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: inherit;
+            font-size: 0.85em;
+        }
+
+        .message-content pre {
+            background: var(--bg);
+            padding: 12px;
+            border-radius: 6px;
+            overflow-x: auto;
+            margin: 12px 0;
+        }
+
+        .message-content pre code {
+            background: none;
+            padding: 0;
+        }
+
+        /* Search results */
+        .search-results {
+            padding: 16px;
+        }
+
+        .search-result {
+            padding: 12px;
+            background: var(--surface);
+            border-radius: 6px;
+            margin-bottom: 12px;
+            cursor: pointer;
+        }
+
+        .search-result:hover { background: var(--surface-hover); }
+
+        .search-result mark {
+            background: var(--warning);
+            color: var(--bg);
+            padding: 0 2px;
+            border-radius: 2px;
+        }
+
+        .search-result-meta {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            margin-bottom: 6px;
+        }
+
+        /* Status bar */
+        .status-bar {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: var(--surface);
+            border-top: 1px solid var(--border);
+            padding: 6px 16px;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            display: flex;
+            justify-content: space-between;
+        }
+
+        /* Loading */
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: var(--text-muted);
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 2px solid var(--border);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        /* Modal */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.7);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.2s, visibility 0.2s;
+        }
+
+        .modal-overlay.visible {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .modal {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 24px;
+            max-width: 500px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+
+        .modal h2 {
+            font-size: 1.1rem;
+            margin-bottom: 16px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .modal-close {
+            float: right;
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            font-size: 1.5rem;
+            cursor: pointer;
+            padding: 0;
+            line-height: 1;
+        }
+
+        .modal-close:hover {
+            color: var(--text);
+        }
+
+        .shortcut-list {
+            list-style: none;
+        }
+
+        .shortcut-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 0;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .shortcut-item:last-child {
+            border-bottom: none;
+        }
+
+        .shortcut-keys {
+            display: flex;
+            gap: 4px;
+        }
+
+        .key {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 2px 8px;
+            font-size: 0.8rem;
+            min-width: 24px;
+            text-align: center;
+        }
+
+        .shortcut-desc {
+            color: var(--text-muted);
+            font-size: 0.85rem;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="container header-content">
+            <h1>Agent Sessions</h1>
+            <div class="search-box">
+                <span class="search-icon">🔍</span>
+                <input type="text" id="search-input" placeholder="Search messages...">
+            </div>
+            <div class="header-actions">
+                <button class="btn" id="sort-btn" title="Toggle message order">↑ Oldest first</button>
+                <button class="btn" id="sync-btn" title="Sync now">↻ Sync</button>
+                <button class="btn" id="shortcuts-btn" title="Keyboard shortcuts">⌨ ?</button>
+            </div>
+        </div>
+    </header>
+
+    <main>
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <h2>Sessions</h2>
+                <span id="session-count" class="badge">0</span>
+            </div>
+            <ul class="session-list" id="session-list">
+                <li class="loading"><span class="spinner"></span></li>
+            </ul>
+        </aside>
+
+        <section class="content" id="content">
+            <div class="empty-state">
+                <h2>Select a session</h2>
+                <p>Choose a session from the sidebar or search for messages</p>
+            </div>
+        </section>
+    </main>
+
+    <div class="status-bar">
+        <span id="status-text">Loading...</span>
+        <span id="sync-status"></span>
+        <span id="last-sync">Last sync: --</span>
+    </div>
+
+    <!-- Keyboard shortcuts modal -->
+    <div class="modal-overlay" id="shortcuts-modal">
+        <div class="modal">
+            <button class="modal-close" id="modal-close">&times;</button>
+            <h2>Keyboard Shortcuts</h2>
+            <ul class="shortcut-list">
+                <li class="shortcut-item">
+                    <span class="shortcut-desc">Focus search</span>
+                    <span class="shortcut-keys"><span class="key">⌘</span><span class="key">K</span></span>
+                </li>
+                <li class="shortcut-item">
+                    <span class="shortcut-desc">Clear search / Close modal</span>
+                    <span class="shortcut-keys"><span class="key">Esc</span></span>
+                </li>
+                <li class="shortcut-item">
+                    <span class="shortcut-desc">Next message</span>
+                    <span class="shortcut-keys"><span class="key">↓</span> or <span class="key">J</span></span>
+                </li>
+                <li class="shortcut-item">
+                    <span class="shortcut-desc">Previous message</span>
+                    <span class="shortcut-keys"><span class="key">↑</span> or <span class="key">K</span></span>
+                </li>
+                <li class="shortcut-item">
+                    <span class="shortcut-desc">Next session</span>
+                    <span class="shortcut-keys"><span class="key">]</span></span>
+                </li>
+                <li class="shortcut-item">
+                    <span class="shortcut-desc">Previous session</span>
+                    <span class="shortcut-keys"><span class="key">[</span></span>
+                </li>
+                <li class="shortcut-item">
+                    <span class="shortcut-desc">Toggle message order</span>
+                    <span class="shortcut-keys"><span class="key">O</span></span>
+                </li>
+                <li class="shortcut-item">
+                    <span class="shortcut-desc">Sync sessions</span>
+                    <span class="shortcut-keys"><span class="key">R</span></span>
+                </li>
+                <li class="shortcut-item">
+                    <span class="shortcut-desc">Show shortcuts</span>
+                    <span class="shortcut-keys"><span class="key">?</span></span>
+                </li>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        // State
+        let sessions = [];
+        let currentSession = null;
+        let currentSessionData = null;
+        let searchTimeout = null;
+        let sortNewestFirst = false;  // Default to chronological (oldest first)
+        let selectedMessageIndex = -1;
+        let statusPollInterval = null;
+
+        // DOM elements
+        const sessionList = document.getElementById('session-list');
+        const sessionCount = document.getElementById('session-count');
+        const content = document.getElementById('content');
+        const searchInput = document.getElementById('search-input');
+        const syncBtn = document.getElementById('sync-btn');
+        const sortBtn = document.getElementById('sort-btn');
+        const shortcutsBtn = document.getElementById('shortcuts-btn');
+        const shortcutsModal = document.getElementById('shortcuts-modal');
+        const modalClose = document.getElementById('modal-close');
+        const statusText = document.getElementById('status-text');
+        const syncStatusEl = document.getElementById('sync-status');
+        const lastSyncEl = document.getElementById('last-sync');
+
+        // API calls
+        async function fetchSessions() {
+            const res = await fetch('/api/sessions?limit=200');
+            const data = await res.json();
+            return data.sessions;
+        }
+
+        async function fetchSession(id) {
+            const res = await fetch(`/api/sessions/${id}`);
+            return res.json();
+        }
+
+        async function searchMessages(query) {
+            const res = await fetch(`/api/search?q=${encodeURIComponent(query)}&limit=50`);
+            return res.json();
+        }
+
+        async function triggerSync() {
+            syncBtn.disabled = true;
+            syncBtn.textContent = '↻ Syncing...';
+            try {
+                await fetch('/api/sync', { method: 'POST' });
+                await loadSessions();
+                updateStatus();
+            } finally {
+                syncBtn.disabled = false;
+                syncBtn.textContent = '↻ Sync';
+            }
+        }
+
+        async function updateStatus() {
+            const res = await fetch('/api/status');
+            const data = await res.json();
+            statusText.textContent = `${data.stats.sessions} sessions · ${data.stats.messages} messages`;
+
+            // Update sync status
+            const sync = data.sync;
+            if (sync && sync.is_syncing) {
+                const pct = sync.sessions_total > 0
+                    ? Math.round((sync.sessions_done / sync.sessions_total) * 100)
+                    : 0;
+                let statusMsg = `Syncing: ${sync.sessions_done}/${sync.sessions_total} sessions`;
+                if (sync.current_project) {
+                    statusMsg += ` (${sync.current_project})`;
+                }
+                statusMsg += ` · ${sync.messages_indexed} msgs indexed`;
+                syncStatusEl.textContent = statusMsg;
+                syncStatusEl.style.color = 'var(--warning)';
+
+                // Start polling if not already
+                if (!statusPollInterval) {
+                    statusPollInterval = setInterval(updateStatus, 500);
+                }
+            } else {
+                syncStatusEl.textContent = '';
+                // Stop polling
+                if (statusPollInterval) {
+                    clearInterval(statusPollInterval);
+                    statusPollInterval = null;
+                    // Reload sessions after sync completes
+                    await loadSessions();
+                }
+            }
+
+            if (data.last_sync) {
+                const date = new Date(data.last_sync);
+                lastSyncEl.textContent = `Last sync: ${date.toLocaleTimeString()}`;
+            }
+        }
+
+        // Sort functions
+        function toggleSort() {
+            sortNewestFirst = !sortNewestFirst;
+            sortBtn.textContent = sortNewestFirst ? '↓ Newest first' : '↑ Oldest first';
+            // Re-render current session if one is loaded
+            if (currentSessionData) {
+                renderSession(currentSessionData);
+            }
+        }
+
+        // Render functions
+        function renderSessionList() {
+            sessionCount.textContent = sessions.length;
+            sessionList.innerHTML = sessions.map(s => `
+                <li class="session-item ${currentSession?.id === s.id ? 'active' : ''}"
+                    data-id="${s.id}">
+                    <div class="session-title">${escapeHtml(s.first_message || 'No message')}</div>
+                    <div class="session-meta">
+                        <span class="badge agent-claude">Claude</span>
+                        <span class="badge">${s.project}</span>
+                        <span>${s.message_count} msgs</span>
+                        <span>${formatDate(s.started_at)}</span>
+                    </div>
+                </li>
+            `).join('');
+
+            // Add click handlers
+            sessionList.querySelectorAll('.session-item').forEach(item => {
+                item.addEventListener('click', () => loadSession(item.dataset.id));
+            });
+        }
+
+        function renderSession(data) {
+            const { session, messages } = data;
+            // Sort messages based on toggle
+            const sortedMessages = [...messages];
+            if (sortNewestFirst) {
+                sortedMessages.reverse();
+            }
+            // Reset selection
+            selectedMessageIndex = -1;
+
+            content.innerHTML = `
+                <div class="session-detail">
+                    <h2>${escapeHtml(session.first_message || session.id)}</h2>
+                    <div class="messages">
+                        ${sortedMessages.map((m, i) => `
+                            <div class="message ${m.role}" id="${m.msg_id}" data-index="${i}">
+                                <div class="message-header">
+                                    <span class="message-role">${m.role}</span>
+                                    <span class="message-time">${formatTime(m.timestamp)}</span>
+                                </div>
+                                <div class="message-content">${formatContent(m.content)}</div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+
+            // Add click handlers to messages
+            content.querySelectorAll('.message').forEach(msg => {
+                msg.addEventListener('click', () => {
+                    selectMessage(parseInt(msg.dataset.index));
+                });
+            });
+        }
+
+        function selectMessage(index, direction = 0) {
+            const messages = content.querySelectorAll('.message');
+            if (messages.length === 0) return;
+
+            // Clamp index
+            index = Math.max(0, Math.min(index, messages.length - 1));
+
+            // Remove previous selection
+            messages.forEach(m => m.classList.remove('selected'));
+
+            // Select new message
+            selectedMessageIndex = index;
+            const selected = messages[index];
+            if (selected) {
+                selected.classList.add('selected');
+
+                const rect = selected.getBoundingClientRect();
+                const contentRect = content.getBoundingClientRect();
+
+                const isAbove = rect.top < contentRect.top;
+                const isBelow = rect.bottom > contentRect.bottom;
+                const isTallerThanViewport = rect.height > contentRect.height;
+
+                if (direction !== 0 && (isAbove || isBelow)) {
+                    // Keyboard navigation - always align to top for consistency
+                    // This ensures the message is fully visible from the start
+                    selected.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                } else if (direction === 0 && (isAbove || isBelow)) {
+                    // Click - align to top as well
+                    selected.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+            }
+        }
+
+        function navigateMessages(direction) {
+            const messages = content.querySelectorAll('.message');
+            if (messages.length === 0) return;
+
+            if (selectedMessageIndex === -1) {
+                // No selection, select first or last based on direction
+                selectMessage(direction > 0 ? 0 : messages.length - 1, direction);
+            } else {
+                selectMessage(selectedMessageIndex + direction, direction);
+            }
+        }
+
+        function navigateSessions(direction) {
+            if (sessions.length === 0) return;
+
+            const currentIndex = currentSession
+                ? sessions.findIndex(s => s.id === currentSession.id)
+                : -1;
+
+            let newIndex;
+            if (currentIndex === -1) {
+                newIndex = direction > 0 ? 0 : sessions.length - 1;
+            } else {
+                newIndex = currentIndex + direction;
+                newIndex = Math.max(0, Math.min(newIndex, sessions.length - 1));
+            }
+
+            if (newIndex !== currentIndex) {
+                loadSession(sessions[newIndex].id);
+            }
+        }
+
+        function renderSearchResults(data) {
+            if (data.results.length === 0) {
+                content.innerHTML = `
+                    <div class="empty-state">
+                        <h2>No results</h2>
+                        <p>No messages found for "${escapeHtml(data.query)}"</p>
+                    </div>
+                `;
+                return;
+            }
+
+            content.innerHTML = `
+                <div class="search-results">
+                    <h2>Search results for "${escapeHtml(data.query)}" (${data.count})</h2>
+                    ${data.results.map(r => `
+                        <div class="search-result" data-session="${r.session_id}" data-msg="${r.msg_id}">
+                            <div class="search-result-meta">
+                                <span class="badge">${r.project}</span>
+                                <span>${r.role}</span>
+                            </div>
+                            <div>${r.snippet || escapeHtml(r.content.substring(0, 200))}</div>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+
+            // Add click handlers
+            content.querySelectorAll('.search-result').forEach(item => {
+                item.addEventListener('click', () => {
+                    loadSession(item.dataset.session, item.dataset.msg);
+                });
+            });
+        }
+
+        // Load functions
+        async function loadSessions() {
+            sessions = await fetchSessions();
+            renderSessionList();
+        }
+
+        async function loadSession(id, scrollToMsg = null) {
+            const data = await fetchSession(id);
+            currentSession = data.session;
+            currentSessionData = data;
+            renderSession(data);
+            renderSessionList(); // Update active state
+
+            if (scrollToMsg) {
+                setTimeout(() => {
+                    const el = document.getElementById(scrollToMsg);
+                    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }, 100);
+            }
+        }
+
+        async function doSearch(query) {
+            if (!query.trim()) {
+                if (currentSession) {
+                    await loadSession(currentSession.id);
+                } else {
+                    content.innerHTML = `
+                        <div class="empty-state">
+                            <h2>Select a session</h2>
+                            <p>Choose a session from the sidebar or search for messages</p>
+                        </div>
+                    `;
+                }
+                return;
+            }
+
+            const data = await searchMessages(query);
+            renderSearchResults(data);
+        }
+
+        // Utilities
+        function escapeHtml(text) {
+            if (!text) return '';
+            return text
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;');
+        }
+
+        function formatContent(text) {
+            if (!text) return '';
+            // Basic markdown-ish formatting
+            let html = escapeHtml(text);
+            // Code blocks
+            html = html.replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>');
+            // Inline code
+            html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+            return html;
+        }
+
+        function formatDate(ts) {
+            if (!ts) return '';
+            const date = new Date(ts);
+            return date.toLocaleDateString();
+        }
+
+        function formatTime(ts) {
+            if (!ts) return '';
+            const date = new Date(ts);
+            return date.toLocaleTimeString();
+        }
+
+        // Modal functions
+        function openShortcutsModal() {
+            shortcutsModal.classList.add('visible');
+        }
+
+        function closeShortcutsModal() {
+            shortcutsModal.classList.remove('visible');
+        }
+
+        // Event handlers
+        searchInput.addEventListener('input', (e) => {
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(() => doSearch(e.target.value), 300);
+        });
+
+        syncBtn.addEventListener('click', triggerSync);
+        sortBtn.addEventListener('click', toggleSort);
+        shortcutsBtn.addEventListener('click', openShortcutsModal);
+        modalClose.addEventListener('click', closeShortcutsModal);
+
+        // Close modal on overlay click
+        shortcutsModal.addEventListener('click', (e) => {
+            if (e.target === shortcutsModal) {
+                closeShortcutsModal();
+            }
+        });
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', (e) => {
+            const isModalOpen = shortcutsModal.classList.contains('visible');
+            const isInputFocused = document.activeElement === searchInput;
+
+            // Escape - close modal or clear search
+            if (e.key === 'Escape') {
+                if (isModalOpen) {
+                    closeShortcutsModal();
+                    e.preventDefault();
+                } else if (isInputFocused) {
+                    searchInput.value = '';
+                    searchInput.blur();
+                    doSearch('');
+                }
+                return;
+            }
+
+            // Don't process other shortcuts if modal is open or input is focused
+            if (isModalOpen) return;
+
+            // Cmd/Ctrl + K to focus search
+            if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+                e.preventDefault();
+                searchInput.focus();
+                searchInput.select();
+                return;
+            }
+
+            // Skip if input is focused for remaining shortcuts
+            if (isInputFocused) return;
+
+            // Message navigation
+            if (e.key === 'ArrowDown' || e.key === 'j') {
+                e.preventDefault();
+                navigateMessages(1);
+            } else if (e.key === 'ArrowUp' || e.key === 'k') {
+                e.preventDefault();
+                navigateMessages(-1);
+            }
+            // Session navigation
+            else if (e.key === ']') {
+                e.preventDefault();
+                navigateSessions(1);
+            } else if (e.key === '[') {
+                e.preventDefault();
+                navigateSessions(-1);
+            }
+            // Toggle sort order
+            else if (e.key === 'o') {
+                e.preventDefault();
+                toggleSort();
+            }
+            // Refresh/sync
+            else if (e.key === 'r') {
+                e.preventDefault();
+                triggerSync();
+            }
+            // Show shortcuts
+            else if (e.key === '?') {
+                e.preventDefault();
+                openShortcutsModal();
+            }
+        });
+
+        // Initialize
+        (async () => {
+            await loadSessions();
+            await updateStatus();
+            // Auto-load most recent session
+            if (sessions.length > 0) {
+                await loadSession(sessions[0].id);
+            }
+        })();
+    </script>
+</body>
+</html>
