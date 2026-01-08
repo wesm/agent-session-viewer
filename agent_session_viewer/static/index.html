@@ -700,7 +700,7 @@
             if (!sessionId) return;
 
             // Connect to SSE with session ID
-            eventSource = new EventSource(`/api/events?session_id=${sessionId}`);
+            eventSource = new EventSource(`/api/events?session_id=${encodeURIComponent(sessionId)}`);
 
             eventSource.addEventListener('session_updated', async (event) => {
                 const updatedSessionId = event.data;
@@ -740,7 +740,7 @@
             sessionList.innerHTML = sessions.map(s => `
                 <li class="session-item ${currentSession?.id === s.id ? 'active' : ''}"
                     data-id="${s.id}">
-                    <div class="session-project">${s.project}</div>
+                    <div class="session-project">${escapeHtml(s.project)}</div>
                     <div class="session-title">${escapeHtml(s.first_message || 'No message')}</div>
                     <div class="session-meta">
                         <span class="agent-name">Claude</span>

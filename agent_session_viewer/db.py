@@ -209,7 +209,7 @@ def get_sessions(
 ) -> list[dict]:
     """Get sessions with optional filters."""
     with get_db() as conn:
-        query = "SELECT * FROM sessions WHERE message_count > 0"
+        query = "SELECT * FROM sessions WHERE COALESCE(message_count, 0) > 0"
         params = []
 
         if project:

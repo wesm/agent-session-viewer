@@ -271,7 +271,10 @@ async def event_stream(session_id: Optional[str] = None):
         if session_id:
             source_path = sync_module.find_source_file(session_id)
             if source_path:
-                last_mtime = source_path.stat().st_mtime
+                try:
+                    last_mtime = source_path.stat().st_mtime
+                except (FileNotFoundError, PermissionError):
+                    source_path = None
 
         heartbeat_counter = 0
         while True:
@@ -279,19 +282,25 @@ async def event_stream(session_id: Optional[str] = None):
             await asyncio.sleep(1.5)
             heartbeat_counter += 1
 
-            if source_path and source_path.exists():
-                current_mtime = source_path.stat().st_mtime
-                if last_mtime and current_mtime > last_mtime:
-                    # File changed - sync and notify
-                    last_mtime = current_mtime
-                    project_name = sync_module.get_project_name(source_path.parent)
-                    result = sync_module.sync_session_file(
-                        source_path, project_name, force=True
-                    )
-                    if result and not result.get("skipped"):
-                        yield f"event: session_updated\ndata: {session_id}\n\n"
-                elif last_mtime is None:
-                    last_mtime = current_mtime
+            if source_path:
+                try:
+                    current_mtime = source_path.stat().st_mtime
+                    if last_mtime and current_mtime > last_mtime:
+                        # File changed - sync and notify (run in thread to avoid blocking)
+                        last_mtime = current_mtime
+                        project_name = sync_module.get_project_name(source_path.parent)
+                        result = await asyncio.to_thread(
+                            sync_module.sync_session_file,
+                            source_path, project_name, "local", True
+                        )
+                        if result and not result.get("skipped"):
+                            yield f"event: session_updated\ndata: {session_id}\n\n"
+                    elif last_mtime is None:
+                        last_mtime = current_mtime
+                except (FileNotFoundError, PermissionError):
+                    # File was deleted or became inaccessible, stop watching
+                    source_path = None
+                    last_mtime = None
 
             # Send heartbeat every 20 iterations (~30 seconds)
             if heartbeat_counter >= 20:

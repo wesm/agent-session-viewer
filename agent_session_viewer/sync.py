@@ -68,14 +68,27 @@ def find_matching_projects() -> list[Path]:
 
 
 def find_source_file(session_id: str) -> Optional[Path]:
-    """Find the source .jsonl file for a session ID in Claude projects."""
+    """Find the source .jsonl file for a session ID in Claude projects.
+
+    Validates session_id to prevent path traversal attacks.
+    """
     if not CLAUDE_PROJECTS_DIR.exists():
+        return None
+
+    # Validate session_id: only allow alphanumeric, hyphens, underscores
+    # This prevents path traversal via ../ or absolute paths
+    if not session_id or not all(c.isalnum() or c in '-_' for c in session_id):
         return None
 
     for project_dir in CLAUDE_PROJECTS_DIR.iterdir():
         if not project_dir.is_dir():
             continue
         candidate = project_dir / f"{session_id}.jsonl"
+        # Extra safety: ensure candidate is actually under project_dir
+        try:
+            candidate.resolve().relative_to(project_dir.resolve())
+        except ValueError:
+            continue
         if candidate.exists():
             return candidate
     return None

@@ -9,20 +9,35 @@ Claude Code sessions pile up fast. Finding that one conversation where you solve
 ## Features
 
 - **Full-text search** - Find any message across all your sessions instantly
-- **Auto-sync** - Pulls new sessions from Claude Code every 15 minutes
+- **Live updates** - Active sessions refresh automatically as new messages arrive
+- **Auto-sync** - Background sync every 15 minutes, plus manual sync with `r`
 - **Keyboard-first** - Vim-style navigation (j/k/[/]) for fast browsing
 - **Project organization** - Sessions grouped by codebase
-- **Local-first** - Your data stays on your machine in `~/.agent-session-viewer/`
+- **Local-first** - All data stays on your machine in `~/.agent-session-viewer/`
 - **Zero config** - Works out of the box
 
-## Quick Start
+## Install
 
 ```bash
+# With uv (recommended)
 uv tool install agent-session-viewer
+
+# With pip
+pip install agent-session-viewer
+```
+
+## Usage
+
+```bash
 agent-session-viewer
 ```
 
-Opens a browser at `http://localhost:8080`. Use `--port 9000` for a custom port or `--no-browser` to skip auto-open.
+Opens a browser at `http://localhost:8080`.
+
+Options:
+- `--port 9000` - Use a custom port
+- `--no-browser` - Don't open browser automatically
+- `--host 0.0.0.0` - Bind to all interfaces
 
 ## Keyboard Shortcuts
 
@@ -34,6 +49,10 @@ Opens a browser at `http://localhost:8080`. Use `--port 9000` for a custom port 
 | `r` | Sync sessions |
 | `⌘K` | Focus search |
 | `?` | Show all shortcuts |
+
+## How It Works
+
+The viewer syncs sessions from Claude Code's local storage (`~/.claude/projects/`) into its own database with full-text search indexing. When you're viewing an active session, it watches the source file and updates the UI within seconds of new messages.
 
 ## License
 
