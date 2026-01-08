@@ -11,18 +11,18 @@ EXTRA_INSTRUCTIONS="$2"
 # Find the previous tag
 PREV_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
 if [ -z "$PREV_TAG" ]; then
-    # No previous tag, use first commit
-    FIRST_COMMIT=$(git rev-list --max-parents=0 HEAD)
-    RANGE="$FIRST_COMMIT..HEAD"
+    # No previous tag - include all commits including root
     echo "No previous release found. Generating changelog for all commits..." >&2
+    COMMITS=$(git log --pretty=format:"- %s (%h)" --no-merges)
+    # Use empty tree to diff against for full history
+    EMPTY_TREE=$(git hash-object -t tree /dev/null)
+    DIFF_STAT=$(git diff --stat "$EMPTY_TREE" HEAD)
 else
     RANGE="$PREV_TAG..HEAD"
     echo "Generating changelog from $PREV_TAG to HEAD..." >&2
+    COMMITS=$(git log $RANGE --pretty=format:"- %s (%h)" --no-merges)
+    DIFF_STAT=$(git diff --stat $RANGE)
 fi
-
-# Get commit log for changelog generation
-COMMITS=$(git log $RANGE --pretty=format:"- %s (%h)" --no-merges)
-DIFF_STAT=$(git diff --stat $RANGE)
 
 if [ -z "$COMMITS" ]; then
     echo "No commits since $PREV_TAG" >&2

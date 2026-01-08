@@ -10,6 +10,9 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 
+# Change to project root so all commands work correctly
+cd "$PROJECT_DIR"
+
 VERSION="$1"
 EXTRA_INSTRUCTIONS="$2"
 
@@ -40,12 +43,19 @@ if ! git diff-index --quiet HEAD --; then
     exit 1
 fi
 
-# Update version in pyproject.toml
+# Update version in pyproject.toml (using Python for portability)
 echo "Updating version to $VERSION in pyproject.toml..."
-sed -i '' "s/^version = \".*\"/version = \"$VERSION\"/" "$PROJECT_DIR/pyproject.toml"
+python3 -c "
+import re
+from pathlib import Path
+p = Path('pyproject.toml')
+content = p.read_text()
+content = re.sub(r'^version = \".*\"', f'version = \"$VERSION\"', content, flags=re.MULTILINE)
+p.write_text(content)
+"
 
 # Commit version bump
-git add "$PROJECT_DIR/pyproject.toml"
+git add pyproject.toml
 git commit -m "Bump version to $VERSION"
 
 # Generate changelog
