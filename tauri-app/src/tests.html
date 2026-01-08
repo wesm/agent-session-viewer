@@ -102,9 +102,9 @@
 
         // safeSnippet security tests
         test('safeSnippet: escapes script tags', () => {
-            const input = '<script>alert("xss")</script>';
+            const input = '<scr' + 'ipt>alert("xss")</scr' + 'ipt>';
             const output = safeSnippet(input);
-            assertNotContains(output, '<script>', 'script tag should be escaped');
+            assertNotContains(output, '<scr' + 'ipt>', 'script tag should be escaped');
             assertContains(output, '&lt;script&gt;', 'script should be escaped');
         });
 
@@ -142,9 +142,9 @@
         });
 
         test('safeSnippet: handles nested script in mark', () => {
-            const input = '<mark><script>alert(1)</script></mark>';
+            const input = '<mark><scr' + 'ipt>alert(1)</scr' + 'ipt></mark>';
             const output = safeSnippet(input);
-            assertNotContains(output, '<script>', 'nested script should be escaped');
+            assertNotContains(output, '<scr' + 'ipt>', 'nested script should be escaped');
             assertContains(output, '<mark>', 'mark should still work');
         });
 
