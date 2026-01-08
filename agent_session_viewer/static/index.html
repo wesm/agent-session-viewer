@@ -173,6 +173,15 @@
         .session-item:hover { background: var(--surface); }
         .session-item.active { background: var(--surface-hover); border-left: 3px solid var(--accent); }
 
+        .session-project {
+            font-size: 0.75rem;
+            color: var(--accent);
+            margin-bottom: 2px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
         .session-title {
             font-size: 0.9rem;
             color: var(--text);
@@ -191,17 +200,12 @@
             gap: 6px;
         }
 
-        .session-meta .agent-indicator {
-            color: #d4a574;
-            font-weight: 500;
-        }
-
-        .session-meta .project-name {
-            color: var(--text);
-        }
-
         .session-meta .meta-sep {
             opacity: 0.5;
+        }
+
+        .session-meta .agent-name {
+            color: #d4a574;
         }
 
         .badge {
@@ -700,11 +704,10 @@
             sessionList.innerHTML = sessions.map(s => `
                 <li class="session-item ${currentSession?.id === s.id ? 'active' : ''}"
                     data-id="${s.id}">
+                    <div class="session-project">${s.project}</div>
                     <div class="session-title">${escapeHtml(s.first_message || 'No message')}</div>
                     <div class="session-meta">
-                        <span class="agent-indicator">⬡ Claude</span>
-                        <span class="meta-sep">·</span>
-                        <span class="project-name">${s.project}</span>
+                        <span class="agent-name">Claude</span>
                         <span class="meta-sep">·</span>
                         <span>${s.message_count} msgs</span>
                         <span class="meta-sep">·</span>
