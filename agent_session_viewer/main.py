@@ -351,7 +351,7 @@ async def index():
     """Serve the SPA."""
     index_path = STATIC_DIR / "index.html"
     if index_path.exists():
-        return index_path.read_text()
+        return index_path.read_text(encoding="utf-8")
     return "<h1>Claude Code Session Viewer</h1><p>Static files not found.</p>"
 
 
@@ -370,6 +370,12 @@ def find_available_port(start_port: int = 8080) -> int:
 
 def cli():
     """CLI entry point for agent-session-viewer."""
+    # Windows console defaults to legacy encoding (e.g., cp1252) which can't
+    # handle Unicode characters in progress bars. Reconfigure to UTF-8.
+    if sys.platform == 'win32' and hasattr(sys.stdout, 'reconfigure'):
+        sys.stdout.reconfigure(encoding='utf-8', errors='backslashreplace')
+        sys.stderr.reconfigure(encoding='utf-8', errors='backslashreplace')
+
     parser = argparse.ArgumentParser(
         description="Agent Session Viewer - View AI agent coding sessions"
     )
