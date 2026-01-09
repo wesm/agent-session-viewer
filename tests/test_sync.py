@@ -291,6 +291,44 @@ class TestExtractCwdFromSession:
         assert result == "/Users/user/Projects/myapp"
 
 
+class TestGetSafeStorageKey:
+    """Tests for get_safe_storage_key function."""
+
+    def test_converts_absolute_path_to_safe_name(self):
+        """Should convert absolute paths to safe directory names."""
+        result = sync.get_safe_storage_key("/Users/user/Projects/my-app")
+        assert result == "Users-user-Projects-my-app"
+        assert "/" not in result  # No slashes
+
+    def test_prevents_path_traversal(self):
+        """Should prevent path traversal attacks by normalizing paths."""
+        result = sync.get_safe_storage_key("/Users/user/../etc/passwd")
+        # Path gets normalized to /Users/etc/passwd, then converted
+        assert ".." not in result
+        assert result == "Users-etc-passwd"  # Normalized path
+
+    def test_handles_tilde_paths(self):
+        """Should expand tilde to full home directory path."""
+        result = sync.get_safe_storage_key("~/Projects/app")
+        # Tilde gets expanded by Path.resolve() to actual home directory
+        assert "~" not in result
+        assert "Projects-app" in result  # Contains the path after home
+        assert "/" not in result  # No slashes remain
+
+    def test_truncates_very_long_paths(self):
+        """Should truncate very long paths with hash suffix."""
+        long_path = "/Users/user/" + "a" * 300
+        result = sync.get_safe_storage_key(long_path)
+        assert len(result) <= 200
+        assert "-" in result  # Has hash suffix
+
+    def test_passes_through_encoded_names(self):
+        """Should pass through already-encoded directory names."""
+        encoded = "-Users-user-Projects-app"
+        result = sync.get_safe_storage_key(encoded)
+        assert result == encoded
+
+
 class TestGetProjectDisplayName:
     """Tests for get_project_display_name function."""
 

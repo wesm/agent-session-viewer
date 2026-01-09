@@ -72,6 +72,39 @@ def extract_cwd_from_session(session_path: Path) -> Optional[str]:
     return None
 
 
+def get_safe_storage_key(project_identifier: str) -> str:
+    """Convert a project identifier to a safe directory name for storage.
+
+    Args:
+        project_identifier: Either a full cwd path like "/Users/user/Projects/app"
+                           or an encoded directory name like "-Users-user-Projects-app"
+
+    Returns:
+        Safe directory name that won't escape SESSIONS_DIR
+    """
+    if project_identifier.startswith("/") or project_identifier.startswith("~"):
+        # It's an absolute path - normalize it first to resolve .. and other tricks
+        try:
+            normalized = str(Path(project_identifier).resolve())
+        except (ValueError, OSError):
+            # If path resolution fails, fall back to basic sanitization
+            normalized = project_identifier
+
+        # Create a safe slug - replace slashes and other unsafe chars with dashes
+        safe = normalized.replace("/", "-").replace("~", "home").lstrip("-")
+
+        # Limit length to prevent filesystem issues
+        if len(safe) > 200:
+            # Use hash for very long paths
+            import hashlib
+            hash_suffix = hashlib.md5(project_identifier.encode()).hexdigest()[:8]
+            safe = safe[:180] + "-" + hash_suffix
+        return safe
+    else:
+        # Already an encoded directory name, safe to use
+        return project_identifier
+
+
 def get_project_display_name(cwd_or_encoded_path: str) -> str:
     """Get a clean display name from a cwd path or encoded directory name.
 
@@ -261,13 +294,14 @@ def sync_session_file(
     # File is new or changed - compute hash if not already done
     source_hash = compute_file_hash(source_path)
 
-    # Copy to local storage
-    target_dir = SESSIONS_DIR / project_name
+    # Copy to local storage using safe storage key to prevent path traversal
+    safe_dir_name = get_safe_storage_key(project_name)
+    target_dir = SESSIONS_DIR / safe_dir_name
     target_dir.mkdir(parents=True, exist_ok=True)
     target_path = target_dir / source_path.name
     shutil.copy2(source_path, target_path)
 
-    # Parse and index
+    # Parse and index (keep project_name as full identifier for DB uniqueness)
     metadata, messages = parse_session(target_path, project_name, machine)
 
     # Update database with file info
@@ -308,13 +342,17 @@ def sync_project(project_dir: Path, machine: str = "local", on_progress=None) ->
     Returns:
         Dict with sync stats
     """
-    # Try to extract full cwd from first session file, fallback to directory name
-    session_files = [f for f in project_dir.glob("*.jsonl") if not f.stem.startswith("agent-")]
+    # Get all non-agent session files sorted by modification time (newest first)
+    session_files = sorted(
+        [f for f in project_dir.glob("*.jsonl") if not f.stem.startswith("agent-")],
+        key=lambda f: f.stat().st_mtime,
+        reverse=True
+    )
 
     # Use encoded directory name as fallback (unique identifier)
     project_identifier = project_dir.name
     if session_files:
-        # Try to get actual cwd from first session file (unique identifier)
+        # Try to get actual cwd from most recent session file (deterministic)
         actual_cwd = extract_cwd_from_session(session_files[0])
         if actual_cwd:
             project_identifier = actual_cwd

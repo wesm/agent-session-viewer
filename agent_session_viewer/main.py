@@ -153,21 +153,35 @@ async def list_sessions(
     offset: int = Query(default=0, ge=0),
 ):
     """List sessions with optional filters."""
+    from .sync import get_project_display_name
+
     sessions = db.get_sessions(
         project=project,
         machine=machine,
         limit=limit,
         offset=offset,
     )
+
+    # Convert project identifiers to display names to avoid exposing full paths
+    for session in sessions:
+        if "project" in session:
+            session["project"] = get_project_display_name(session["project"])
+
     return {"sessions": sessions, "count": len(sessions)}
 
 
 @app.get("/api/sessions/{session_id}")
 async def get_session(session_id: str):
     """Get session details with messages."""
+    from .sync import get_project_display_name
+
     session = db.get_session(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
+
+    # Convert project identifier to display name
+    if session and "project" in session:
+        session["project"] = get_project_display_name(session["project"])
 
     messages = db.get_session_messages(session_id)
     return {
@@ -194,9 +208,16 @@ async def search(
 
 @app.get("/api/projects")
 async def list_projects():
-    """List all projects."""
-    projects = db.get_projects()
-    return {"projects": projects}
+    """List all projects with display names (not full paths)."""
+    from .sync import get_project_display_name
+
+    # Get project identifiers (may be full paths)
+    project_identifiers = db.get_projects()
+
+    # Convert to display names to avoid exposing full filesystem paths
+    display_names = sorted(set(get_project_display_name(p) for p in project_identifiers))
+
+    return {"projects": display_names}
 
 
 @app.get("/api/machines")
@@ -213,19 +234,22 @@ async def upload_session(
     machine: str = Query(default="remote"),
 ):
     """Upload a session file from a remote machine."""
+    from .sync import get_safe_storage_key
+
     if not file.filename.endswith(".jsonl"):
         raise HTTPException(status_code=400, detail="File must be .jsonl")
 
-    # Save file
+    # Save file using safe storage key to prevent path traversal
     session_id = Path(file.filename).stem
-    target_dir = DATA_DIR / "sessions" / project
+    safe_dir_name = get_safe_storage_key(project)
+    target_dir = DATA_DIR / "sessions" / safe_dir_name
     target_dir.mkdir(parents=True, exist_ok=True)
     target_path = target_dir / file.filename
 
     content = await file.read()
     target_path.write_bytes(content)
 
-    # Index it
+    # Index it (keep project as-is for DB uniqueness)
     from .parser import parse_session
     metadata, messages = parse_session(target_path, project, machine)
 
