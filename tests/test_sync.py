@@ -244,3 +244,32 @@ class TestCodexExecFiltering:
         metadata, messages = parse_codex_session(session_file)
         assert metadata is not None
         assert metadata.session_id == "codex:test-id"
+
+
+class TestGetProjectName:
+    """Tests for get_project_name function."""
+
+    def test_extracts_last_component_from_encoded_path(self):
+        """Should extract just the project name from encoded full path."""
+        # Claude Code encodes paths like: -Users-tenzinwangdhen-Projects-roborev
+        dir_path = Path("-Users-tenzinwangdhen-Projects-roborev")
+        result = sync.get_project_name(dir_path)
+        assert result == "roborev"
+
+    def test_extracts_from_noc_contractors_path(self):
+        """Should extract project name from noc0-contractors path."""
+        dir_path = Path("-Users-tenzinwangdhen-Projects-noc0-contractors")
+        result = sync.get_project_name(dir_path)
+        assert result == "noc0-contractors"
+
+    def test_extracts_from_path_with_code_directory(self):
+        """Should extract project name when 'code' is in the path."""
+        dir_path = Path("-Users-user-code-myproject")
+        result = sync.get_project_name(dir_path)
+        assert result == "myproject"
+
+    def test_simple_directory_name(self):
+        """Should handle simple directory names without leading dash."""
+        dir_path = Path("simple-project")
+        result = sync.get_project_name(dir_path)
+        assert result == "simple-project"

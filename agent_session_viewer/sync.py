@@ -46,12 +46,23 @@ def get_project_name(dir_path: Path) -> str:
     # Strip common path prefixes like "-Users-user-code-"
     if name.startswith("-"):
         parts = name.split("-")
-        # Find the meaningful part (usually after "code")
+        # Common directory names that indicate path components
+        path_markers = {"users", "home", "code", "projects", "documents", "src", "workspace"}
+
+        # Find the last path marker and take everything after it
+        last_marker_idx = -1
         for i, part in enumerate(parts):
-            if part.lower() == "code" and i + 1 < len(parts):
-                name = "-".join(parts[i + 1:])
-                break
-    return name.replace("-", "_")
+            if part.lower() in path_markers:
+                last_marker_idx = i
+
+        if last_marker_idx != -1 and last_marker_idx + 1 < len(parts):
+            name = "-".join(parts[last_marker_idx + 1:])
+        else:
+            # Fallback: take everything except the first empty part
+            name = "-".join(parts[1:]) if len(parts) > 1 else name
+
+    # Return name as-is, preserving dashes
+    return name
 
 
 def find_matching_projects() -> list[Path]:
