@@ -550,7 +550,7 @@
                 </select>
             </div>
             <div class="header-actions">
-                <button class="btn" id="thinking-btn" title="Toggle thinking blocks">○ Thinking</button>
+                <button class="btn" id="thinking-btn" title="Toggle thinking blocks" aria-pressed="false">○ Thinking</button>
                 <button class="btn" id="scroll-top-btn" title="Scroll to top">↑ Top</button>
                 <button class="btn" id="sort-btn" title="Toggle message order">↓ Newest first</button>
                 <button class="btn" id="sync-btn" title="Sync now">↻ Sync</button>
@@ -806,6 +806,7 @@
         function toggleThinking() {
             showThinking = !showThinking;
             thinkingBtn.textContent = showThinking ? '◉ Thinking' : '○ Thinking';
+            thinkingBtn.setAttribute('aria-pressed', showThinking);
             document.body.classList.toggle('show-thinking', showThinking);
         }
 
