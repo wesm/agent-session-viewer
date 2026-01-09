@@ -256,11 +256,11 @@ class TestGetProjectName:
         result = sync.get_project_name(dir_path)
         assert result == "roborev"
 
-    def test_extracts_from_noc_contractors_path(self):
-        """Should extract project name from noc0-contractors path."""
-        dir_path = Path("-Users-user-Projects-noc0-contractors")
+    def test_extracts_from_path_with_dashes(self):
+        """Should preserve dashes in project names."""
+        dir_path = Path("-Users-user-Projects-my-app")
         result = sync.get_project_name(dir_path)
-        assert result == "noc0-contractors"
+        assert result == "my-app"
 
     def test_extracts_from_path_with_code_directory(self):
         """Should extract project name when 'code' is in the path."""
