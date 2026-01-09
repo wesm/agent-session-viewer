@@ -251,14 +251,14 @@ class TestGetProjectName:
 
     def test_extracts_last_component_from_encoded_path(self):
         """Should extract just the project name from encoded full path."""
-        # Claude Code encodes paths like: -Users-tenzinwangdhen-Projects-roborev
-        dir_path = Path("-Users-tenzinwangdhen-Projects-roborev")
+        # Claude Code encodes paths like: -Users-user-Projects-roborev
+        dir_path = Path("-Users-user-Projects-roborev")
         result = sync.get_project_name(dir_path)
         assert result == "roborev"
 
     def test_extracts_from_noc_contractors_path(self):
         """Should extract project name from noc0-contractors path."""
-        dir_path = Path("-Users-tenzinwangdhen-Projects-noc0-contractors")
+        dir_path = Path("-Users-user-Projects-noc0-contractors")
         result = sync.get_project_name(dir_path)
         assert result == "noc0-contractors"
 
