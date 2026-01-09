@@ -47,7 +47,7 @@ def get_project_name(dir_path: Path) -> str:
     if name.startswith("-"):
         parts = name.split("-")
         # Common directory names that indicate path components
-        path_markers = {"users", "home", "code", "projects", "documents", "src", "workspace"}
+        path_markers = {"users", "home", "code", "projects", "documents", "downloads", "experiments", "src", "workspace"}
 
         # Find the last path marker and take everything after it
         last_marker_idx = -1

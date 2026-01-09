@@ -273,3 +273,15 @@ class TestGetProjectName:
         dir_path = Path("simple-project")
         result = sync.get_project_name(dir_path)
         assert result == "simple-project"
+
+    def test_extracts_from_downloads_path(self):
+        """Should extract project name from Downloads directory."""
+        dir_path = Path("-Users-user-Downloads-my-project")
+        result = sync.get_project_name(dir_path)
+        assert result == "my-project"
+
+    def test_extracts_from_experiments_path(self):
+        """Should extract project name from Experiments directory."""
+        dir_path = Path("-Users-user-Experiments-test-app")
+        result = sync.get_project_name(dir_path)
+        assert result == "test-app"
