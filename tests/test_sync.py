@@ -246,28 +246,28 @@ class TestCodexExecFiltering:
         assert metadata.session_id == "codex:test-id"
 
 
-class TestExtractProjectNameFromSession:
-    """Tests for extract_project_name_from_session function."""
+class TestExtractCwdFromSession:
+    """Tests for extract_cwd_from_session function."""
 
-    def test_extracts_from_cwd_field(self, tmp_path):
-        """Should extract project name from cwd field in session file."""
+    def test_extracts_full_cwd_path(self, tmp_path):
+        """Should extract full cwd path from session file."""
         session_file = tmp_path / "test-session.jsonl"
         session_file.write_text(
-            '{"type":"user","cwd":"/Users/user/Projects/noc0/noc0-contractors","message":{}}\n'
+            '{"type":"user","cwd":"/Users/user/Projects/parent/my-app","message":{}}\n'
         )
 
-        result = sync.extract_project_name_from_session(session_file)
-        assert result == "noc0-contractors"
+        result = sync.extract_cwd_from_session(session_file)
+        assert result == "/Users/user/Projects/parent/my-app"
 
     def test_extracts_from_nested_path(self, tmp_path):
-        """Should extract just the last directory component."""
+        """Should return the full path, not just the last component."""
         session_file = tmp_path / "test-session.jsonl"
         session_file.write_text(
-            '{"type":"assistant","cwd":"/Users/user/Projects/parent/my-app","message":{}}\n'
+            '{"type":"assistant","cwd":"/Users/user/Projects/a/app","message":{}}\n'
         )
 
-        result = sync.extract_project_name_from_session(session_file)
-        assert result == "my-app"
+        result = sync.extract_cwd_from_session(session_file)
+        assert result == "/Users/user/Projects/a/app"
 
     def test_returns_none_when_no_cwd(self, tmp_path):
         """Should return None when cwd field not found."""
@@ -276,7 +276,7 @@ class TestExtractProjectNameFromSession:
             '{"type":"summary","summary":"test"}\n'
         )
 
-        result = sync.extract_project_name_from_session(session_file)
+        result = sync.extract_cwd_from_session(session_file)
         assert result is None
 
     def test_handles_invalid_json(self, tmp_path):
@@ -287,8 +287,33 @@ class TestExtractProjectNameFromSession:
             '{"type":"user","cwd":"/Users/user/Projects/myapp","message":{}}\n'
         )
 
-        result = sync.extract_project_name_from_session(session_file)
-        assert result == "myapp"
+        result = sync.extract_cwd_from_session(session_file)
+        assert result == "/Users/user/Projects/myapp"
+
+
+class TestGetProjectDisplayName:
+    """Tests for get_project_display_name function."""
+
+    def test_extracts_leaf_from_full_path(self):
+        """Should extract just the leaf directory from full cwd path."""
+        result = sync.get_project_display_name("/Users/user/Projects/parent/my-app")
+        assert result == "my-app"
+
+    def test_handles_encoded_directory_names(self):
+        """Should extract from encoded directory names."""
+        result = sync.get_project_display_name("-Users-user-Projects-my-app")
+        assert result == "my-app"
+
+    def test_preserves_uniqueness_for_collisions(self):
+        """Full paths preserve uniqueness even when basenames collide."""
+        # These are different full paths with same basename
+        path1 = "/Users/user/Projects/a/app"
+        path2 = "/Users/user/Projects/b/app"
+
+        # Both get same display name, but full paths are used as unique identifiers
+        assert sync.get_project_display_name(path1) == "app"
+        assert sync.get_project_display_name(path2) == "app"
+        # The uniqueness is maintained because full paths (path1, path2) are stored
 
 
 class TestGetProjectName:
