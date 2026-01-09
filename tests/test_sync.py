@@ -291,67 +291,40 @@ class TestExtractCwdFromSession:
         assert result == "/Users/user/Projects/myapp"
 
 
-class TestGetSafeStorageKey:
-    """Tests for get_safe_storage_key function."""
-
-    def test_converts_absolute_path_to_safe_name(self):
-        """Should convert absolute paths to safe directory names."""
-        result = sync.get_safe_storage_key("/Users/user/Projects/my-app")
-        assert result == "Users-user-Projects-my-app"
-        assert "/" not in result  # No slashes
-
-    def test_prevents_path_traversal(self):
-        """Should prevent path traversal attacks by normalizing paths."""
-        result = sync.get_safe_storage_key("/Users/user/../etc/passwd")
-        # Path gets normalized to /Users/etc/passwd, then converted
-        assert ".." not in result
-        assert result == "Users-etc-passwd"  # Normalized path
-
-    def test_handles_tilde_paths(self):
-        """Should expand tilde to full home directory path."""
-        result = sync.get_safe_storage_key("~/Projects/app")
-        # Tilde gets expanded by Path.resolve() to actual home directory
-        assert "~" not in result
-        assert "Projects-app" in result  # Contains the path after home
-        assert "/" not in result  # No slashes remain
-
-    def test_truncates_very_long_paths(self):
-        """Should truncate very long paths with hash suffix."""
-        long_path = "/Users/user/" + "a" * 300
-        result = sync.get_safe_storage_key(long_path)
-        assert len(result) <= 200
-        assert "-" in result  # Has hash suffix
-
-    def test_passes_through_encoded_names(self):
-        """Should pass through already-encoded directory names."""
-        encoded = "-Users-user-Projects-app"
-        result = sync.get_safe_storage_key(encoded)
-        assert result == encoded
-
-
 class TestGetProjectDisplayName:
     """Tests for get_project_display_name function."""
 
-    def test_extracts_leaf_from_full_path(self):
-        """Should extract just the leaf directory from full cwd path."""
-        result = sync.get_project_display_name("/Users/user/Projects/parent/my-app")
-        assert result == "my-app"
+    def test_extracts_from_cwd_in_session_file(self, tmp_path):
+        """Should extract display name from cwd field in session files."""
+        # Create a session directory with a session file containing cwd
+        session_dir = tmp_path / "-Users-user-Projects-my-app"
+        session_dir.mkdir()
+        session_file = session_dir / "test-session.jsonl"
+        session_file.write_text(
+            '{"type":"user","cwd":"/Users/user/Projects/my-app","message":{}}\n'
+        )
 
-    def test_handles_encoded_directory_names(self):
-        """Should extract from encoded directory names."""
-        result = sync.get_project_display_name("-Users-user-Projects-my-app")
-        assert result == "my-app"
+        with patch.object(sync, "SESSIONS_DIR", tmp_path):
+            result = sync.get_project_display_name("-Users-user-Projects-my-app")
+            assert result == "my-app"
 
-    def test_preserves_uniqueness_for_collisions(self):
-        """Full paths preserve uniqueness even when basenames collide."""
-        # These are different full paths with same basename
-        path1 = "/Users/user/Projects/a/app"
-        path2 = "/Users/user/Projects/b/app"
+    def test_falls_back_to_encoded_name_parsing(self, tmp_path):
+        """Should fall back to parsing encoded name when no session files."""
+        with patch.object(sync, "SESSIONS_DIR", tmp_path):
+            result = sync.get_project_display_name("-Users-user-Projects-my-app")
+            assert result == "my-app"
 
-        # Both get same display name, but full paths are used as unique identifiers
-        assert sync.get_project_display_name(path1) == "app"
-        assert sync.get_project_display_name(path2) == "app"
-        # The uniqueness is maintained because full paths (path1, path2) are stored
+    def test_handles_provided_session_dir(self, tmp_path):
+        """Should use provided session_dir to find cwd."""
+        session_dir = tmp_path / "project"
+        session_dir.mkdir()
+        session_file = session_dir / "session.jsonl"
+        session_file.write_text(
+            '{"type":"user","cwd":"/Users/user/Projects/actual-name","message":{}}\n'
+        )
+
+        result = sync.get_project_display_name("doesnt-matter", session_dir)
+        assert result == "actual-name"
 
 
 class TestGetProjectName:

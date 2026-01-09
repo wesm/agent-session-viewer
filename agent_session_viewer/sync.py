@@ -72,55 +72,33 @@ def extract_cwd_from_session(session_path: Path) -> Optional[str]:
     return None
 
 
-def get_safe_storage_key(project_identifier: str) -> str:
-    """Convert a project identifier to a safe directory name for storage.
+def get_project_display_name(encoded_dir_name: str, session_dir: Path = None) -> str:
+    """Get a clean display name for a project.
+
+    Tries to extract the actual project name from session file cwd field.
+    Falls back to parsing the encoded directory name if cwd not available.
 
     Args:
-        project_identifier: Either a full cwd path like "/Users/user/Projects/app"
-                           or an encoded directory name like "-Users-user-Projects-app"
+        encoded_dir_name: The encoded directory name like "-Users-user-Projects-app"
+        session_dir: Optional path to the project's session directory to read cwd from.
+                     If not provided, will try SESSIONS_DIR / encoded_dir_name.
 
     Returns:
-        Safe directory name that won't escape SESSIONS_DIR
+        Clean project name suitable for display (e.g., "app")
     """
-    if project_identifier.startswith("/") or project_identifier.startswith("~"):
-        # It's an absolute path - normalize it first to resolve .. and other tricks
-        try:
-            normalized = str(Path(project_identifier).resolve())
-        except (ValueError, OSError):
-            # If path resolution fails, fall back to basic sanitization
-            normalized = project_identifier
+    # If no session_dir provided, try to find it in SESSIONS_DIR
+    if session_dir is None:
+        session_dir = SESSIONS_DIR / encoded_dir_name
 
-        # Create a safe slug - replace slashes and other unsafe chars with dashes
-        safe = normalized.replace("/", "-").replace("~", "home").lstrip("-")
+    # Try to get actual name from session file cwd
+    if session_dir.exists():
+        for session_file in session_dir.glob("*.jsonl"):
+            cwd = extract_cwd_from_session(session_file)
+            if cwd:
+                return Path(cwd).name
 
-        # Limit length to prevent filesystem issues
-        if len(safe) > 200:
-            # Use hash for very long paths
-            import hashlib
-            hash_suffix = hashlib.md5(project_identifier.encode()).hexdigest()[:8]
-            safe = safe[:180] + "-" + hash_suffix
-        return safe
-    else:
-        # Already an encoded directory name, safe to use
-        return project_identifier
-
-
-def get_project_display_name(cwd_or_encoded_path: str) -> str:
-    """Get a clean display name from a cwd path or encoded directory name.
-
-    Args:
-        cwd_or_encoded_path: Either a full cwd path like "/Users/user/Projects/app"
-                            or an encoded directory name like "-Users-user-Projects-app"
-
-    Returns:
-        Clean project name suitable for display (just the leaf directory)
-    """
-    if cwd_or_encoded_path.startswith("/") or cwd_or_encoded_path.startswith("~"):
-        # It's a filesystem path - return the leaf directory name
-        return Path(cwd_or_encoded_path).name
-    else:
-        # It's an encoded directory name - use the old extraction logic
-        return get_project_name(Path(cwd_or_encoded_path))
+    # Fallback to parsing encoded directory name
+    return get_project_name(Path(encoded_dir_name))
 
 
 def get_project_name(dir_path: Path) -> str:
@@ -294,14 +272,13 @@ def sync_session_file(
     # File is new or changed - compute hash if not already done
     source_hash = compute_file_hash(source_path)
 
-    # Copy to local storage using safe storage key to prevent path traversal
-    safe_dir_name = get_safe_storage_key(project_name)
-    target_dir = SESSIONS_DIR / safe_dir_name
+    # Copy to local storage using encoded directory name
+    target_dir = SESSIONS_DIR / project_name
     target_dir.mkdir(parents=True, exist_ok=True)
     target_path = target_dir / source_path.name
     shutil.copy2(source_path, target_path)
 
-    # Parse and index (keep project_name as full identifier for DB uniqueness)
+    # Parse and index
     metadata, messages = parse_session(target_path, project_name, machine)
 
     # Update database with file info
@@ -342,23 +319,15 @@ def sync_project(project_dir: Path, machine: str = "local", on_progress=None) ->
     Returns:
         Dict with sync stats
     """
-    # Get all non-agent session files sorted by modification time (newest first)
-    session_files = sorted(
-        [f for f in project_dir.glob("*.jsonl") if not f.stem.startswith("agent-")],
-        key=lambda f: f.stat().st_mtime,
-        reverse=True
-    )
+    session_files = list(project_dir.glob("*.jsonl"))
+    # Filter out agent files
+    session_files = [f for f in session_files if not f.stem.startswith("agent-")]
 
-    # Use encoded directory name as fallback (unique identifier)
-    project_identifier = project_dir.name
-    if session_files:
-        # Try to get actual cwd from most recent session file (deterministic)
-        actual_cwd = extract_cwd_from_session(session_files[0])
-        if actual_cwd:
-            project_identifier = actual_cwd
+    # Use encoded directory name as identifier (unique and safe)
+    project_name = project_dir.name
 
-    # Get display name for progress reporting
-    display_name = get_project_display_name(project_identifier)
+    # Get display name for progress reporting (reads cwd from session files)
+    display_name = get_project_display_name(project_name, project_dir)
 
     if on_progress:
         on_progress("project_start", project=display_name, sessions=len(session_files))
@@ -374,8 +343,8 @@ def sync_project(project_dir: Path, machine: str = "local", on_progress=None) ->
         if on_progress:
             on_progress("session_start", session=session_file.stem)
 
-        # Use project_identifier (full cwd) for storage, ensures uniqueness
-        result = sync_session_file(session_file, project_identifier, machine)
+        # Use encoded directory name for storage (unique and safe)
+        result = sync_session_file(session_file, project_name, machine)
         stats["total"] += 1
 
         msg_count = 0
@@ -569,25 +538,15 @@ def sync_all(machine: str = "local", on_progress=None) -> dict:
 
 
 def reindex_all():
-    """Re-index all sessions from the data/sessions directory.
-
-    Extracts correct project identifiers (full cwd paths) from session files,
-    ensuring each unique project path is stored separately even if they share
-    the same leaf directory name (e.g., /a/app vs /b/app).
-    """
+    """Re-index all sessions from the data/sessions directory."""
     results = {
         "sessions": 0,
         "messages": 0,
     }
 
-    for old_project_name, session_path in iter_project_sessions(SESSIONS_DIR):
-        # Try to extract full cwd from session file (unique identifier)
-        project_identifier = extract_cwd_from_session(session_path)
-        if not project_identifier:
-            # Fallback to directory name if cwd not found
-            project_identifier = old_project_name
-
-        metadata, messages = parse_session(session_path, project_identifier)
+    for project_name, session_path in iter_project_sessions(SESSIONS_DIR):
+        # Use directory name as project identifier (already unique)
+        metadata, messages = parse_session(session_path, project_name)
 
         db.upsert_session(
             session_id=metadata.session_id,

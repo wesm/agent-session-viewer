@@ -234,15 +234,15 @@ async def upload_session(
     machine: str = Query(default="remote"),
 ):
     """Upload a session file from a remote machine."""
-    from .sync import get_safe_storage_key
-
     if not file.filename.endswith(".jsonl"):
         raise HTTPException(status_code=400, detail="File must be .jsonl")
 
-    # Save file using safe storage key to prevent path traversal
+    # Validate project name to prevent path traversal
+    if "/" in project or "\\" in project or ".." in project:
+        raise HTTPException(status_code=400, detail="Invalid project name")
+
     session_id = Path(file.filename).stem
-    safe_dir_name = get_safe_storage_key(project)
-    target_dir = DATA_DIR / "sessions" / safe_dir_name
+    target_dir = DATA_DIR / "sessions" / project
     target_dir.mkdir(parents=True, exist_ok=True)
     target_path = target_dir / file.filename
 
