@@ -40,8 +40,45 @@ SESSIONS_DIR = DATA_DIR / "sessions"
 PROJECT_PATTERNS = ["*"]
 
 
+def extract_project_name_from_session(session_path: Path) -> Optional[str]:
+    """Extract actual project name from cwd field in session file.
+
+    Returns the last component of the cwd path, or None if cwd not found.
+    """
+    import json
+
+    try:
+        with open(session_path, "r", encoding="utf-8") as f:
+            # Check first 50 lines for a cwd field
+            for i, line in enumerate(f):
+                if i >= 50:  # Don't read entire file
+                    break
+                if not line.strip():
+                    continue
+
+                try:
+                    entry = json.loads(line)
+                    cwd = entry.get("cwd")
+                    if cwd:
+                        # Return the last component of the path
+                        return Path(cwd).name
+                except json.JSONDecodeError:
+                    continue
+    except (OSError, IOError):
+        pass
+
+    return None
+
+
 def get_project_name(dir_path: Path) -> str:
-    """Convert a project directory path to a clean name."""
+    """Convert a project directory path to a clean name.
+
+    DEPRECATED: This function tries to reverse-engineer the project name from
+    the encoded directory name, which is ambiguous. Prefer extracting from
+    the session file's cwd field using extract_project_name_from_session().
+
+    This is kept for backwards compatibility and as a fallback.
+    """
     name = dir_path.name
     # Strip common path prefixes like "-Users-user-code-"
     if name.startswith("-"):
@@ -49,14 +86,18 @@ def get_project_name(dir_path: Path) -> str:
         # Common directory names that indicate path components
         path_markers = {"users", "home", "code", "projects", "documents", "downloads", "experiments", "src", "workspace"}
 
-        # Find the last path marker and take everything after it
+        # Find the last path marker and take up to last 2 components after it
+        # This handles nested directories (e.g., /Projects/parent/child → "child")
+        # while preserving hyphenated names (e.g., /Projects/my-app → "my-app")
         last_marker_idx = -1
         for i, part in enumerate(parts):
             if part.lower() in path_markers:
                 last_marker_idx = i
 
         if last_marker_idx != -1 and last_marker_idx + 1 < len(parts):
-            name = "-".join(parts[last_marker_idx + 1:])
+            remaining = parts[last_marker_idx + 1:]
+            # Take last 2 components to handle hyphenated names, or fewer if that's all there is
+            name = "-".join(remaining[-2:]) if len(remaining) >= 2 else "-".join(remaining)
         else:
             # Fallback: take everything except the first empty part
             name = "-".join(parts[1:]) if len(parts) > 1 else name
@@ -247,9 +288,15 @@ def sync_project(project_dir: Path, machine: str = "local", on_progress=None) ->
     Returns:
         Dict with sync stats
     """
-    project_name = get_project_name(project_dir)
-    # Filter out agent- files from the count
+    # Try to extract project name from first session file, fallback to directory name
     session_files = [f for f in project_dir.glob("*.jsonl") if not f.stem.startswith("agent-")]
+
+    project_name = get_project_name(project_dir)  # Fallback
+    if session_files:
+        # Try to get actual project name from first session file
+        actual_name = extract_project_name_from_session(session_files[0])
+        if actual_name:
+            project_name = actual_name
 
     if on_progress:
         on_progress("project_start", project=project_name, sessions=len(session_files))

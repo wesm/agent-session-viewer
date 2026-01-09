@@ -246,6 +246,51 @@ class TestCodexExecFiltering:
         assert metadata.session_id == "codex:test-id"
 
 
+class TestExtractProjectNameFromSession:
+    """Tests for extract_project_name_from_session function."""
+
+    def test_extracts_from_cwd_field(self, tmp_path):
+        """Should extract project name from cwd field in session file."""
+        session_file = tmp_path / "test-session.jsonl"
+        session_file.write_text(
+            '{"type":"user","cwd":"/Users/user/Projects/noc0/noc0-contractors","message":{}}\n'
+        )
+
+        result = sync.extract_project_name_from_session(session_file)
+        assert result == "noc0-contractors"
+
+    def test_extracts_from_nested_path(self, tmp_path):
+        """Should extract just the last directory component."""
+        session_file = tmp_path / "test-session.jsonl"
+        session_file.write_text(
+            '{"type":"assistant","cwd":"/Users/user/Projects/parent/my-app","message":{}}\n'
+        )
+
+        result = sync.extract_project_name_from_session(session_file)
+        assert result == "my-app"
+
+    def test_returns_none_when_no_cwd(self, tmp_path):
+        """Should return None when cwd field not found."""
+        session_file = tmp_path / "test-session.jsonl"
+        session_file.write_text(
+            '{"type":"summary","summary":"test"}\n'
+        )
+
+        result = sync.extract_project_name_from_session(session_file)
+        assert result is None
+
+    def test_handles_invalid_json(self, tmp_path):
+        """Should handle invalid JSON gracefully."""
+        session_file = tmp_path / "test-session.jsonl"
+        session_file.write_text(
+            'invalid json\n'
+            '{"type":"user","cwd":"/Users/user/Projects/myapp","message":{}}\n'
+        )
+
+        result = sync.extract_project_name_from_session(session_file)
+        assert result == "myapp"
+
+
 class TestGetProjectName:
     """Tests for get_project_name function."""
 
@@ -285,3 +330,12 @@ class TestGetProjectName:
         dir_path = Path("-Users-user-Experiments-test-app")
         result = sync.get_project_name(dir_path)
         assert result == "test-app"
+
+    def test_extracts_from_nested_directory_path(self):
+        """Should extract just the child directory from nested structure."""
+        # Real filesystem: /Projects/parent/my-app
+        # Claude encodes as: -Users-user-Projects-parent-my-app
+        # Should extract just: my-app (not parent-my-app)
+        dir_path = Path("-Users-user-Projects-parent-my-app")
+        result = sync.get_project_name(dir_path)
+        assert result == "my-app"
