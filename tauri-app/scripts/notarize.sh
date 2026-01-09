@@ -23,12 +23,21 @@ if [ -n "$DMG_PATH" ]; then
     exit 1
   fi
 else
-  # Find newest DMG in dist directory
-  DMG_PATH=$(find "$DIST_DIR" -name "*.dmg" -type f 2>/dev/null | \
-    xargs ls -t 2>/dev/null | head -1 || true)
+  # Find newest DMG in dist directory (handles spaces in paths)
+  if [ ! -d "$DIST_DIR" ]; then
+    echo "Dist directory not found: $DIST_DIR"
+    echo "Run build_release.sh first."
+    exit 1
+  fi
 
+  # Use find -print0 and sort by mtime to handle spaces safely
+  DMG_PATH=$(find "$DIST_DIR" -name "*.dmg" -type f -print0 2>/dev/null | \
+    xargs -0 ls -t 2>/dev/null | head -1) || true
+
+  # Verify we found a valid DMG (not empty and is a file)
   if [ -z "$DMG_PATH" ] || [ ! -f "$DMG_PATH" ]; then
-    echo "DMG not found in $DIST_DIR. Run build_release.sh first."
+    echo "No DMG files found in $DIST_DIR"
+    echo "Run build_release.sh first."
     echo "Or specify DMG path: ./scripts/notarize.sh /path/to/app.dmg"
     exit 1
   fi
