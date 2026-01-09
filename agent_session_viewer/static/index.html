@@ -345,6 +345,11 @@
             border-radius: 4px;
             font-style: italic;
             color: var(--text-muted);
+            display: none;
+        }
+
+        body.show-thinking .thinking-block {
+            display: block;
         }
 
         .thinking-label {
@@ -536,6 +541,7 @@
                 </select>
             </div>
             <div class="header-actions">
+                <button class="btn" id="thinking-btn" title="Toggle thinking blocks">○ Thinking</button>
                 <button class="btn" id="scroll-top-btn" title="Scroll to top">↑ Top</button>
                 <button class="btn" id="sort-btn" title="Toggle message order">↓ Newest first</button>
                 <button class="btn" id="sync-btn" title="Sync now">↻ Sync</button>
@@ -623,6 +629,7 @@
         let currentSessionData = null;
         let searchTimeout = null;
         let sortNewestFirst = true;  // Default to newest first
+        let showThinking = false;
         let selectedMessageIndex = -1;
         let statusPollInterval = null;
         let eventSource = null;  // SSE connection for live updates
@@ -638,6 +645,7 @@
         const projectFilter = document.getElementById('project-filter');
         const syncBtn = document.getElementById('sync-btn');
         const sortBtn = document.getElementById('sort-btn');
+        const thinkingBtn = document.getElementById('thinking-btn');
         const scrollTopBtn = document.getElementById('scroll-top-btn');
         const shortcutsBtn = document.getElementById('shortcuts-btn');
         const shortcutsModal = document.getElementById('shortcuts-modal');
@@ -784,6 +792,12 @@
             if (currentSessionData) {
                 renderSession(currentSessionData);
             }
+        }
+
+        function toggleThinking() {
+            showThinking = !showThinking;
+            thinkingBtn.textContent = showThinking ? '◉ Thinking' : '○ Thinking';
+            document.body.classList.toggle('show-thinking', showThinking);
         }
 
         // Render functions
@@ -1118,6 +1132,7 @@
 
         syncBtn.addEventListener('click', triggerSync);
         sortBtn.addEventListener('click', toggleSort);
+        thinkingBtn.addEventListener('click', toggleThinking);
         scrollTopBtn.addEventListener('click', () => {
             content.scrollTo({ top: 0 });
         });
