@@ -74,8 +74,8 @@ jobs:
       - name: Build Tauri app
         run: npx @tauri-apps/cli build --ci
         env:
-          # Skip signing in CI
-          TAURI_SIGNING_PRIVATE_KEY: ""
+          # Use ad-hoc signing in CI (no Developer ID cert required)
+          APPLE_SIGNING_IDENTITY: "-"
 
       - name: Run Rust tests
         run: cargo test
