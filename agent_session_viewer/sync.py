@@ -506,13 +506,23 @@ def sync_all(machine: str = "local", on_progress=None) -> dict:
 
 
 def reindex_all():
-    """Re-index all sessions from the data/sessions directory."""
+    """Re-index all sessions from the data/sessions directory.
+
+    Extracts correct project names from session file cwd fields,
+    updating any entries that were indexed with old directory-based names.
+    """
     results = {
         "sessions": 0,
         "messages": 0,
     }
 
-    for project_name, session_path in iter_project_sessions(SESSIONS_DIR):
+    for old_project_name, session_path in iter_project_sessions(SESSIONS_DIR):
+        # Try to extract actual project name from session file
+        project_name = extract_project_name_from_session(session_path)
+        if not project_name:
+            # Fallback to directory name if cwd not found
+            project_name = old_project_name
+
         metadata, messages = parse_session(session_path, project_name)
 
         db.upsert_session(
