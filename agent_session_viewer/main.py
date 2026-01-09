@@ -180,15 +180,16 @@ async def get_session(session_id: str):
 async def search(
     q: str = Query(..., min_length=1),
     limit: int = Query(default=100, le=500),
+    project: str | None = Query(default=None),
 ):
-    """Full-text search across messages."""
+    """Full-text search across messages, optionally filtered by project."""
     # Prepare query for FTS5 (wrap in quotes for phrase, add * for prefix)
     fts_query = q.strip()
     if " " in fts_query and not fts_query.startswith('"'):
         # Multi-word: search as phrase
         fts_query = f'"{fts_query}"'
 
-    results = db.search_messages(fts_query, limit=limit)
+    results = db.search_messages(fts_query, limit=limit, project=project)
     return {"query": q, "results": results, "count": len(results)}
 
 

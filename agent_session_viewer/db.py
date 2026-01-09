@@ -248,20 +248,31 @@ def get_session_messages(session_id: str) -> list[dict]:
         return [dict(row) for row in rows]
 
 
-def search_messages(query: str, limit: int = 100) -> list[dict]:
-    """Full-text search across messages."""
+def search_messages(query: str, limit: int = 100, project: str | None = None) -> list[dict]:
+    """Full-text search across messages, optionally filtered by project."""
     with get_db() as conn:
-        # Use FTS5 match syntax
-        rows = conn.execute("""
-            SELECT m.*, s.project, s.machine,
-                   snippet(messages_fts, 0, '<mark>', '</mark>', '...', 32) as snippet
-            FROM messages_fts
-            JOIN messages m ON messages_fts.rowid = m.id
-            JOIN sessions s ON m.session_id = s.id
-            WHERE messages_fts MATCH ?
-            ORDER BY rank
-            LIMIT ?
-        """, (query, limit)).fetchall()
+        if project:
+            rows = conn.execute("""
+                SELECT m.*, s.project, s.machine,
+                       snippet(messages_fts, 0, '<mark>', '</mark>', '...', 32) as snippet
+                FROM messages_fts
+                JOIN messages m ON messages_fts.rowid = m.id
+                JOIN sessions s ON m.session_id = s.id
+                WHERE messages_fts MATCH ? AND s.project = ?
+                ORDER BY rank
+                LIMIT ?
+            """, (query, project, limit)).fetchall()
+        else:
+            rows = conn.execute("""
+                SELECT m.*, s.project, s.machine,
+                       snippet(messages_fts, 0, '<mark>', '</mark>', '...', 32) as snippet
+                FROM messages_fts
+                JOIN messages m ON messages_fts.rowid = m.id
+                JOIN sessions s ON m.session_id = s.id
+                WHERE messages_fts MATCH ?
+                ORDER BY rank
+                LIMIT ?
+            """, (query, limit)).fetchall()
         return [dict(row) for row in rows]
 
 

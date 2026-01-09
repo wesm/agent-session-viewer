@@ -648,9 +648,18 @@
 
         // API calls
         async function fetchProjects() {
-            const res = await fetch('/api/projects');
-            const data = await res.json();
-            return data.projects || [];
+            try {
+                const res = await fetch('/api/projects');
+                if (!res.ok) {
+                    console.warn('Failed to fetch projects:', res.status);
+                    return [];
+                }
+                const data = await res.json();
+                return data.projects || [];
+            } catch (e) {
+                console.warn('Error fetching projects:', e);
+                return [];
+            }
         }
 
         async function fetchSessions() {
@@ -668,8 +677,12 @@
             return res.json();
         }
 
-        async function searchMessages(query) {
-            const res = await fetch(`/api/search?q=${encodeURIComponent(query)}&limit=50`);
+        async function searchMessages(query, project = null) {
+            let url = `/api/search?q=${encodeURIComponent(query)}&limit=100`;
+            if (project && project !== 'all') {
+                url += `&project=${encodeURIComponent(project)}`;
+            }
+            const res = await fetch(url);
             return res.json();
         }
 
@@ -999,12 +1012,8 @@
                 return;
             }
 
-            const data = await searchMessages(query);
-            if (selectedProject && selectedProject !== 'all') {
-                const filtered = (data.results || []).filter(r => r.project === selectedProject);
-                data.results = filtered;
-                data.count = filtered.length;
-            }
+            // Pass project filter to API for server-side filtering
+            const data = await searchMessages(query, selectedProject);
             renderSearchResults(data);
         }
 
