@@ -90,7 +90,7 @@ Press `p` or click **Publish** to instantly share a session via GitHub Gist.
 | **View URL** | Shareable link that renders the HTML directly in the browser |
 | **Gist URL** | Link to the gist on GitHub (for editing or deleting) |
 
-<!-- ![Publish Modal](https://raw.githubusercontent.com/wesm/agent-session-viewer/main/docs/screenshots/publish-modal.png) -->
+![Publish Modal](https://raw.githubusercontent.com/wesm/agent-session-viewer/main/docs/screenshots/publish-modal.png)
 
 Your token is stored locally in `~/.agent-session-viewer/config.json` with restricted file permissions.
 
