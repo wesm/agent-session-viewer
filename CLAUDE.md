@@ -31,6 +31,8 @@ npm run tauri dev
 
 ## Testing
 
+**All new features and bug fixes must include unit tests.** Run tests before committing:
+
 ```bash
 uv run pytest -v
 ```
@@ -40,3 +42,10 @@ For Tauri Rust tests:
 cd tauri-app/src-tauri
 cargo test
 ```
+
+### Test Guidelines
+
+- Add tests for new parser/sync functionality in `tests/test_sync.py`
+- Add tests for database operations in `tests/test_db.py`
+- Use `tmp_path` fixture for temporary files
+- Use `unittest.mock.patch` to mock module-level constants (e.g., `CLAUDE_PROJECTS_DIR`)

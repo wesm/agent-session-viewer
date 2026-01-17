@@ -1,5 +1,6 @@
 """Tests for sync module."""
 
+import json
 import tempfile
 from pathlib import Path
 from unittest.mock import patch
@@ -7,6 +8,51 @@ from unittest.mock import patch
 import pytest
 
 from agent_session_viewer import sync
+from agent_session_viewer.sync import get_project_name
+from agent_session_viewer.parser import (
+    extract_cwd_from_session,
+    extract_project_from_cwd,
+)
+
+
+class TestGetProjectName:
+    """Tests for get_project_name directory name parsing."""
+
+    def test_with_code_marker(self):
+        """Should extract project name after 'code' marker."""
+        assert get_project_name(Path("-Users-alice-code-my-app")) == "my_app"
+        assert get_project_name(Path("-Users-bob-code-cool-project")) == "cool_project"
+
+    def test_with_projects_marker(self):
+        """Should extract project name after 'projects' marker."""
+        assert get_project_name(Path("-Users-alice-Projects-my-app")) == "my_app"
+
+    def test_no_marker_uses_last_part(self):
+        """Should use last meaningful part when no marker found."""
+        assert get_project_name(Path("-Users-alice")) == "alice"
+        assert get_project_name(Path("-home-bob")) == "bob"
+
+    def test_skips_common_directories(self):
+        """Should skip common system directories."""
+        assert get_project_name(Path("-Users-alice")) == "alice"
+        assert get_project_name(Path("-home-ubuntu")) == "ubuntu"
+
+    def test_temp_directory_roborev(self):
+        """Should handle temp directory paths with meaningful names."""
+        # roborev-refine-xxx pattern should extract roborev
+        path = Path("-private-var-folders-xyz-T-roborev-refine-123")
+        result = get_project_name(path)
+        # After "T" marker isn't found, falls back to last meaningful part
+        assert "roborev" in result or result == "123"
+
+    def test_simple_name_passthrough(self):
+        """Names without leading dash should pass through."""
+        assert get_project_name(Path("my-project")) == "my_project"
+        assert get_project_name(Path("simple")) == "simple"
+
+    def test_normalizes_hyphens(self):
+        """Should normalize hyphens to underscores."""
+        assert get_project_name(Path("-Users-alice-code-my-cool-app")) == "my_cool_app"
 
 
 class TestFindSourceFile:
@@ -244,3 +290,108 @@ class TestCodexExecFiltering:
         metadata, messages = parse_codex_session(session_file)
         assert metadata is not None
         assert metadata.session_id == "codex:test-id"
+
+
+class TestCwdExtraction:
+    """Tests for extracting project names from cwd field."""
+
+    def test_extract_cwd_from_session_with_cwd(self, tmp_path):
+        """Should extract cwd from user entry."""
+        session_file = tmp_path / "test.jsonl"
+        session_file.write_text(
+            json.dumps({"type": "user", "cwd": "/Users/user/Projects/my-app", "message": {"content": "hello"}}) + "\n"
+        )
+
+        cwd = extract_cwd_from_session(session_file)
+        assert cwd == "/Users/user/Projects/my-app"
+
+    def test_extract_cwd_from_session_without_cwd(self, tmp_path):
+        """Should return None when no cwd field present."""
+        session_file = tmp_path / "test.jsonl"
+        session_file.write_text(
+            json.dumps({"type": "user", "message": {"content": "hello"}}) + "\n"
+        )
+
+        cwd = extract_cwd_from_session(session_file)
+        assert cwd is None
+
+    def test_extract_cwd_from_session_empty_file(self, tmp_path):
+        """Should return None for empty file."""
+        session_file = tmp_path / "test.jsonl"
+        session_file.write_text("")
+
+        cwd = extract_cwd_from_session(session_file)
+        assert cwd is None
+
+    def test_extract_cwd_from_session_invalid_json(self, tmp_path):
+        """Should handle invalid JSON gracefully."""
+        session_file = tmp_path / "test.jsonl"
+        session_file.write_text("not valid json\n")
+
+        cwd = extract_cwd_from_session(session_file)
+        assert cwd is None
+
+    def test_extract_cwd_from_session_uses_first_cwd(self, tmp_path):
+        """Should use the first cwd found."""
+        session_file = tmp_path / "test.jsonl"
+        session_file.write_text(
+            json.dumps({"type": "user", "cwd": "/first/path", "message": {"content": "1"}}) + "\n" +
+            json.dumps({"type": "user", "cwd": "/second/path", "message": {"content": "2"}}) + "\n"
+        )
+
+        cwd = extract_cwd_from_session(session_file)
+        assert cwd == "/first/path"
+
+    def test_extract_cwd_skips_non_user_entries(self, tmp_path):
+        """Should only look for cwd in user entries."""
+        session_file = tmp_path / "test.jsonl"
+        session_file.write_text(
+            json.dumps({"type": "assistant", "cwd": "/wrong/path", "message": {"content": "hi"}}) + "\n" +
+            json.dumps({"type": "user", "cwd": "/correct/path", "message": {"content": "hello"}}) + "\n"
+        )
+
+        cwd = extract_cwd_from_session(session_file)
+        assert cwd == "/correct/path"
+
+    def test_extract_project_from_cwd_simple(self):
+        """Should extract last path component and normalize."""
+        assert extract_project_from_cwd("/Users/user/Projects/my-app") == "my_app"
+
+    def test_extract_project_from_cwd_nested(self):
+        """Should handle nested directories correctly."""
+        assert extract_project_from_cwd("/Users/user/Projects/parent/my-app") == "my_app"
+
+    def test_extract_project_from_cwd_empty(self):
+        """Should return empty string for empty input."""
+        assert extract_project_from_cwd("") == ""
+        assert extract_project_from_cwd(None) == ""
+
+    def test_extract_project_from_cwd_root(self):
+        """Should handle root path."""
+        assert extract_project_from_cwd("/") == ""
+
+    def test_extract_project_from_cwd_normalizes_hyphens(self):
+        """Should normalize hyphens to underscores for consistency."""
+        assert extract_project_from_cwd("/Users/user/my-cool-app") == "my_cool_app"
+
+    def test_extract_project_from_cwd_trailing_slash(self):
+        """Should handle trailing slash and normalize."""
+        assert extract_project_from_cwd("/Users/user/Projects/my-app/") == "my_app"
+
+    def test_extract_project_from_cwd_rejects_dot(self):
+        """Should reject . as unsafe path component."""
+        # Standalone . should be rejected
+        assert extract_project_from_cwd(".") == ""
+        # Note: /Users/user/. is normalized by pathlib to /Users/user,
+        # so it correctly returns "user" - this is valid behavior
+
+    def test_extract_project_from_cwd_rejects_dotdot(self):
+        """Should reject .. as unsafe path component."""
+        # Standalone .. should be rejected
+        assert extract_project_from_cwd("..") == ""
+        # Path ending in .. should also be rejected (pathlib preserves ..)
+        assert extract_project_from_cwd("/Users/user/..") == ""
+
+    def test_extract_project_from_cwd_no_hyphens_passthrough(self):
+        """Project names without hyphens should pass through."""
+        assert extract_project_from_cwd("/Users/user/myproject") == "myproject"

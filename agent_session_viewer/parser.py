@@ -238,13 +238,63 @@ def iter_project_sessions(sessions_dir: Path) -> Generator[tuple[str, Path], Non
             yield project_name, session_file
 
 
+def normalize_project_name(name: str) -> str:
+    """Normalize a project name for consistency.
+
+    Replaces hyphens with underscores to match get_project_name behavior.
+    """
+    return name.replace("-", "_") if name else ""
+
+
+def extract_project_from_cwd(cwd: str) -> str:
+    """Extract project name from a cwd path.
+
+    Uses the last component of the path as the project name.
+    Works for both Claude Code and Codex sessions.
+    Guards against unsafe path components like . and ..
+    Normalizes the name (replaces - with _) for consistency.
+    """
+    if not cwd:
+        return ""
+    path = Path(cwd)
+    name = path.name or ""
+
+    # Guard against unsafe path components
+    if name in (".", "..", "") or "/" in name or "\\" in name:
+        return ""
+
+    return normalize_project_name(name)
+
+
 def extract_codex_project(cwd: str) -> str:
     """Extract project name from Codex cwd path."""
-    if not cwd:
-        return "unknown"
-    path = Path(cwd)
-    # Use the last component of the path as project name
-    return path.name or "unknown"
+    return extract_project_from_cwd(cwd) or "unknown"
+
+
+def extract_cwd_from_session(jsonl_path: Path) -> Optional[str]:
+    """Extract the cwd field from a Claude Code session file.
+
+    Claude Code stores the working directory in user message entries.
+    Returns the first cwd found, or None if not present.
+    """
+    try:
+        with open(jsonl_path, "r", encoding="utf-8") as f:
+            for line in f:
+                if not line.strip():
+                    continue
+                try:
+                    entry = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+
+                # Check for cwd in user entries
+                if entry.get("type") == "user":
+                    cwd = entry.get("cwd")
+                    if cwd:
+                        return cwd
+    except Exception:
+        pass
+    return None
 
 
 def parse_codex_session(

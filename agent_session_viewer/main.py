@@ -58,6 +58,8 @@ def save_config(config: dict) -> None:
     try:
         with os.fdopen(fd, 'w') as f:
             f.write(content)
+        # Enforce permissions on existing files (os.open mode only applies on creation)
+        CONFIG_FILE.chmod(stat.S_IRUSR | stat.S_IWUSR)  # 0o600
     except Exception:
         os.close(fd)
         raise
@@ -325,14 +327,14 @@ def sanitize_filename(filename: str) -> str:
     return filename
 
 
-def sanitize_role(role: str) -> str:
-    """Whitelist role values for safe HTML insertion."""
+def sanitize_role_class(role: str) -> str:
+    """Whitelist role values for safe CSS class names."""
     allowed = {"user", "assistant"}
     return role if role in allowed else "unknown"
 
 
-def sanitize_agent(agent: str) -> str:
-    """Whitelist agent values for safe HTML class names."""
+def sanitize_agent_class(agent: str) -> str:
+    """Whitelist agent values for safe CSS class names."""
     allowed = {"claude", "codex"}
     return agent if agent in allowed else "claude"
 
@@ -390,15 +392,16 @@ def generate_export_html(session: dict, messages: list) -> str:
     # Generate messages HTML (in chronological order - CSS handles sort toggle)
     messages_html_parts = []
     for i, m in enumerate(messages):
-        role = sanitize_role(m.get("role", "unknown"))
+        role_raw = m.get("role", "unknown")
+        role_class = sanitize_role_class(role_raw)
         content = m.get("content", "")
         timestamp = m.get("timestamp", "")
-        thinking_only_class = " thinking-only" if role == "assistant" and is_thinking_only(content) else ""
+        thinking_only_class = " thinking-only" if role_class == "assistant" and is_thinking_only(content) else ""
 
         messages_html_parts.append(f'''
-            <div class="message {role}{thinking_only_class}" data-index="{i}">
+            <div class="message {role_class}{thinking_only_class}" data-index="{i}">
                 <div class="message-header">
-                    <span class="message-role">{escape_html(role)}</span>
+                    <span class="message-role">{escape_html(role_raw)}</span>
                     <span class="message-time">{format_timestamp(timestamp)}</span>
                 </div>
                 <div class="message-content">{format_content_for_export(content)}</div>
@@ -408,8 +411,15 @@ def generate_export_html(session: dict, messages: list) -> str:
 
     # Session metadata
     project = escape_html(session.get("project", "Unknown"))
-    agent = sanitize_agent(session.get("agent", "claude"))
-    agent_display = "Claude" if agent == "claude" else "Codex" if agent == "codex" else "Claude"
+    agent_raw = session.get("agent", "claude")
+    agent_class = sanitize_agent_class(agent_raw)
+    # Preserve original agent name for display, with friendly names for known agents
+    if agent_raw == "claude":
+        agent_display = "Claude"
+    elif agent_raw == "codex":
+        agent_display = "Codex"
+    else:
+        agent_display = escape_html(agent_raw) if agent_raw else "Claude"
     message_count = session.get("message_count", len(messages))
     started_at = format_timestamp(session.get("started_at", ""))
     first_message = escape_html(session.get("first_message", "")[:100])
@@ -715,7 +725,7 @@ def generate_export_html(session: dict, messages: list) -> str:
             <div class="header-left">
                 <h1>{project}</h1>
                 <div class="session-meta">
-                    <span class="agent-name {agent}">{agent_display}</span>
+                    <span class="agent-name {agent_class}">{agent_display}</span>
                     <span>{message_count} messages</span>
                     <span>{started_at}</span>
                 </div>

@@ -9,7 +9,13 @@ from typing import Optional
 import fnmatch
 
 from . import db
-from .parser import parse_session, parse_codex_session, iter_project_sessions
+from .parser import (
+    parse_session,
+    parse_codex_session,
+    iter_project_sessions,
+    extract_cwd_from_session,
+    extract_project_from_cwd,
+)
 
 
 def compute_file_hash(path: Path) -> str:
@@ -41,16 +47,36 @@ PROJECT_PATTERNS = ["*"]
 
 
 def get_project_name(dir_path: Path) -> str:
-    """Convert a project directory path to a clean name."""
+    """Convert a project directory path to a clean name.
+
+    Claude Code encodes paths like /Users/wesm/code/my-app as -Users-wesm-code-my-app.
+    This function extracts a meaningful project name from such encoded paths.
+    """
     name = dir_path.name
-    # Strip common path prefixes like "-Users-user-code-"
-    if name.startswith("-"):
-        parts = name.split("-")
-        # Find the meaningful part (usually after "code")
+    if not name.startswith("-"):
+        return name.replace("-", "_")
+
+    # Parse encoded path: -Users-wesm-code-my-app -> ["", "Users", "wesm", "code", "my-app"]
+    parts = name.split("-")
+
+    # Look for common parent directories to skip, in priority order
+    skip_markers = ["code", "projects", "repos", "src", "work", "dev"]
+
+    for marker in skip_markers:
         for i, part in enumerate(parts):
-            if part.lower() == "code" and i + 1 < len(parts):
-                name = "-".join(parts[i + 1:])
-                break
+            if part.lower() == marker and i + 1 < len(parts):
+                # Take everything after this marker
+                result = "-".join(parts[i + 1:])
+                if result:
+                    return result.replace("-", "_")
+
+    # No marker found - take the last non-empty part as the project name
+    # This handles cases like -Users-wesm -> wesm
+    for part in reversed(parts):
+        if part and part.lower() not in ("users", "home", "var", "tmp", "private"):
+            return part.replace("-", "_")
+
+    # Ultimate fallback
     return name.replace("-", "_")
 
 
@@ -170,7 +196,7 @@ def sync_session_file(
     # Get source file info
     source_size = source_path.stat().st_size
 
-    # Check if file has changed using size + hash
+    # Check if file has changed using size + hash (before expensive cwd extraction)
     stored_info = db.get_session_file_info(session_id)
     if stored_info and not force:
         stored_size, stored_hash = stored_info
@@ -178,13 +204,33 @@ def sync_session_file(
             # Size matches, check hash
             source_hash = compute_file_hash(source_path)
             if source_hash == stored_hash:
-                # File unchanged, skip entirely
-                return {
-                    "session_id": session_id,
-                    "project": project_name,
-                    "skipped": True,
-                    "messages": 0,
-                }
+                # File unchanged - check if stored project name needs fixing
+                stored_session = db.get_session(session_id)
+                stored_project = stored_session.get("project", "") if stored_session else ""
+
+                # Detect bad project names that look like encoded paths
+                needs_reparse = (
+                    stored_project.startswith("_Users") or
+                    stored_project.startswith("_home") or
+                    stored_project.startswith("_private") or
+                    "_var_folders_" in stored_project
+                )
+
+                if not needs_reparse:
+                    return {
+                        "session_id": session_id,
+                        "project": stored_project or project_name,
+                        "skipped": True,
+                        "messages": 0,
+                    }
+                # Otherwise, fall through to re-parse for better project name
+
+    # File is new or changed - extract cwd for accurate project name
+    # This handles nested directories correctly (e.g., /Users/user/Projects/my-app -> my_app)
+    cwd = extract_cwd_from_session(source_path)
+    actual_project_name = extract_project_from_cwd(cwd) if cwd else None
+    if actual_project_name:
+        project_name = actual_project_name
 
     # File is new or changed - compute hash if not already done
     source_hash = compute_file_hash(source_path)
