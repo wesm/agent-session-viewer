@@ -61,28 +61,38 @@ Options:
 
 ## Export & Publish
 
+Share your AI coding sessions with teammates, for blog posts, or to document how you solved a problem.
+
+<!-- ![Export and Publish](https://raw.githubusercontent.com/wesm/agent-session-viewer/main/docs/screenshots/export-publish.png) -->
+
 ### Export to HTML
 
-Press `e` or click "Export" to download the current session as a self-contained HTML file. The exported file:
+Press `e` or click **Export** to download the current session as a self-contained HTML file.
 
 - Works offline in any browser
-- Includes CSS-only toggles for thinking blocks and sort order
-- Can be hosted on any static file server
+- Interactive toggles for thinking blocks and message order (pure CSS, no JavaScript)
+- Can be hosted on any static file server or shared directly
 
 ### Publish to GitHub Gist
 
-Press `p` or click "Publish" to share a session via GitHub Gist. First-time setup:
+Press `p` or click **Publish** to instantly share a session via GitHub Gist.
 
-1. Click "Publish" - a setup modal will appear
-2. Click the link to create a GitHub token (only needs `gist` scope)
+**First-time setup:**
+
+1. Click "Publish" — a setup modal appears
+2. Click the link to create a GitHub token (only needs the `gist` scope)
 3. Paste the token and click "Save Token"
 
-After setup, publishing is one-click. You'll get:
+**After setup, publishing is one click.** You'll get two URLs:
 
-- **View URL** - A shareable link that renders the HTML (via htmlpreview.github.io)
-- **Gist URL** - Direct link to the gist on GitHub
+| URL | Purpose |
+|-----|---------|
+| **View URL** | Shareable link that renders the HTML directly in the browser |
+| **Gist URL** | Link to the gist on GitHub (for editing or deleting) |
 
-The token is stored locally in `~/.agent-session-viewer/config.json`.
+<!-- ![Publish Modal](https://raw.githubusercontent.com/wesm/agent-session-viewer/main/docs/screenshots/publish-modal.png) -->
+
+Your token is stored locally in `~/.agent-session-viewer/config.json` with restricted file permissions.
 
 ## Supported Agents
 
