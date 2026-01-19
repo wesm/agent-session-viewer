@@ -1,9 +1,10 @@
 """Parse Claude Code JSONL session files."""
 
 import json
+import os
 from pathlib import Path
 from datetime import datetime
-from typing import Optional, Generator
+from typing import Optional, Generator, Union
 from dataclasses import dataclass
 
 
@@ -246,20 +247,23 @@ def normalize_project_name(name: str) -> str:
     return name.replace("-", "_") if name else ""
 
 
-def extract_project_from_cwd(cwd: str) -> str:
+def extract_project_from_cwd(cwd: Union[str, os.PathLike]) -> str:
     """Extract project name from a cwd path.
 
     Uses the last component of the path as the project name.
     Works for both Claude Code and Codex sessions.
     Guards against unsafe path components like . and ..
     Normalizes the name (replaces - with _) for consistency.
-    Handles non-string or invalid cwd values gracefully.
+    Accepts str, Path, or any os.PathLike object.
     """
     if not cwd:
         return ""
-    if not isinstance(cwd, str):
-        return ""
     try:
+        # Normalize PathLike objects to string, then to Path
+        if isinstance(cwd, os.PathLike):
+            cwd = os.fspath(cwd)
+        if not isinstance(cwd, str):
+            return ""
         path = Path(cwd)
         name = path.name or ""
     except (ValueError, TypeError):

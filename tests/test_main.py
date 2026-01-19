@@ -117,10 +117,15 @@ class TestEscapeHtml:
 
     def test_non_string_with_html_chars(self):
         """Non-string values that produce HTML chars should be escaped."""
-        # A dict repr contains angle brackets and quotes
-        result = escape_html({"a": "b"})
-        # The repr should be escaped
-        assert "<" not in result or "&lt;" in result
+        # Use a custom object whose __str__ returns HTML characters
+        class HtmlObject:
+            def __str__(self):
+                return "<tag>content</tag>"
+
+        result = escape_html(HtmlObject())
+        assert "&lt;tag&gt;" in result
+        assert "&lt;/tag&gt;" in result
+        assert "<tag>" not in result
 
 
 class TestGenerateExportHtml:

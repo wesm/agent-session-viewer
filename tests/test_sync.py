@@ -397,10 +397,15 @@ class TestCwdExtraction:
         assert extract_project_from_cwd("/Users/user/myproject") == "myproject"
 
     def test_extract_project_from_cwd_non_string_types(self):
-        """Should return empty string for non-string types."""
+        """Should return empty string for invalid types like int, list, dict."""
         assert extract_project_from_cwd(123) == ""
         assert extract_project_from_cwd(["list"]) == ""
         assert extract_project_from_cwd({"dict": "value"}) == ""
+
+    def test_extract_project_from_cwd_accepts_path_objects(self):
+        """Should accept Path and os.PathLike objects."""
+        assert extract_project_from_cwd(Path("/Users/user/my-app")) == "my_app"
+        assert extract_project_from_cwd(Path("/Users/user/Projects/project")) == "project"
 
     def test_extract_project_from_cwd_embedded_null(self):
         """Should handle strings with embedded null safely."""
@@ -413,20 +418,31 @@ class TestCwdExtraction:
 class TestGetProjectNameFallback:
     """Tests for get_project_name fallback behavior."""
 
-    def test_skips_marker_directories_in_fallback(self):
-        """Marker directories (code, projects, etc.) should be skipped in fallback."""
-        # When path ends with a marker directory, should step back
-        assert get_project_name(Path("-Users-wesm-code")) == "wesm"
-        assert get_project_name(Path("-Users-wesm-projects")) == "wesm"
-        assert get_project_name(Path("-Users-wesm-repos")) == "wesm"
-        assert get_project_name(Path("-Users-wesm-src")) == "wesm"
-        assert get_project_name(Path("-Users-wesm-work")) == "wesm"
-        assert get_project_name(Path("-Users-wesm-dev")) == "wesm"
+    def test_accepts_marker_directories_as_project_names(self):
+        """Common directory names (code, src, etc.) are valid project names."""
+        # These are legitimate project names when they're the working directory
+        assert get_project_name(Path("-Users-wesm-code")) == "code"
+        assert get_project_name(Path("-Users-wesm-projects")) == "projects"
+        assert get_project_name(Path("-Users-wesm-repos")) == "repos"
+        assert get_project_name(Path("-Users-wesm-src")) == "src"
+        assert get_project_name(Path("-Users-wesm-work")) == "work"
+        assert get_project_name(Path("-Users-wesm-dev")) == "dev"
 
     def test_skips_system_directories_in_fallback(self):
-        """System directories should be skipped in fallback."""
+        """System directories (users, home, var, tmp, private) should be skipped."""
+        assert get_project_name(Path("-Users-wesm")) == "wesm"
+        assert get_project_name(Path("-home-ubuntu")) == "ubuntu"
+        # "home" is a system directory and should be skipped even if it appears last
+        # (unlike "code", "src" which are valid project names)
         assert get_project_name(Path("-Users-wesm-home")) == "wesm"
-        assert get_project_name(Path("-home-var-tmp")) != "tmp"
+        assert get_project_name(Path("-Users-wesm-tmp")) == "wesm"
+        assert get_project_name(Path("-Users-wesm-var")) == "wesm"
+
+    def test_marker_extraction_takes_precedence(self):
+        """When a marker has content after it, that content is the project name."""
+        # code/my-app -> my_app (marker extraction works)
+        assert get_project_name(Path("-Users-wesm-code-my-app")) == "my_app"
+        assert get_project_name(Path("-Users-wesm-src-project")) == "project"
 
 
 class TestReparseBehavior:

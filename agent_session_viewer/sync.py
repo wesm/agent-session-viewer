@@ -72,10 +72,10 @@ def get_project_name(dir_path: Path) -> str:
 
     # No marker found - take the last non-empty part as the project name
     # This handles cases like -Users-wesm -> wesm
-    # Skip both system directories and marker roots (code, projects, etc.)
-    skip_dirs = {"users", "home", "var", "tmp", "private", "code", "projects", "repos", "src", "work", "dev"}
+    # Only skip true system directories; names like "code", "src", "dev" are valid project names
+    system_dirs = {"users", "home", "var", "tmp", "private"}
     for part in reversed(parts):
-        if part and part.lower() not in skip_dirs:
+        if part and part.lower() not in system_dirs:
             return part.replace("-", "_")
 
     # Ultimate fallback
