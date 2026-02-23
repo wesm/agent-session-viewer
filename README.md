@@ -1,5 +1,9 @@
 # Agent Session Viewer
 
+> **This project has been superseded by [AgentsView](https://github.com/wesm/agentsview) ([agentsview.io](https://agentsview.io)) and is no longer maintained.** Please use AgentsView instead.
+
+---
+
 Browse, search, and revisit your AI coding sessions. Never lose track of that clever solution your AI pair programmer came up with three weeks ago.
 
 ![Session Viewer](https://raw.githubusercontent.com/wesm/agent-session-viewer/main/docs/screenshots/session-viewer.png)
